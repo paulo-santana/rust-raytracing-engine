@@ -2,6 +2,7 @@ use std::ops;
 
 #[derive(Debug)]
 pub struct Vec3(pub f64, pub f64, pub f64);
+pub use Vec3 as Point3;
 
 impl Vec3 {
     pub fn new(r: f64, g: f64, b: f64) -> Vec3 {
@@ -27,6 +28,22 @@ impl ops::Neg for &Vec3 {
 
     fn neg(self) -> Self::Output {
         Vec3(-self.0, -self.1, -self.2)
+    }
+}
+
+impl ops::Add<Vec3> for Vec3 {
+    type Output = Vec3;
+
+    fn add(self, other: Vec3) -> Self::Output {
+        Vec3(self.0 + other.0, self.1 + other.1, self.2 + other.2)
+    }
+}
+
+impl ops::Add<Vec3> for &Vec3 {
+    type Output = Vec3;
+
+    fn add(self, other: Vec3) -> Self::Output {
+        Vec3(self.0 + other.0, self.1 + other.1, self.2 + other.2)
     }
 }
 
