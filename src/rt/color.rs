@@ -1,6 +1,6 @@
 use std::io::Write;
 
-pub use crate::vec3::Vec3 as Color;
+pub use crate::rt::vec3::Vec3 as Color;
 
 impl Color {
     pub fn black() -> Color {

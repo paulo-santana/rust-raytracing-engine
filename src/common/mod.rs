@@ -303,6 +303,7 @@ impl<A: App> System<A> {
                         .expect("Failed to prepare frame");
                     let mut ui = imgui.frame();
                     ui_builder(&mut run, &mut ui, &mut app);
+                    ui.end_frame_early();
                     platform.prepare_render(&ui, &window);
                     imgui.update_platform_windows();
                     let draw_data = imgui.render();

@@ -1,6 +1,7 @@
 #![allow(unused)]
 
 mod common;
+mod rt;
 use common::*;
 use simple_logger::SimpleLogger;
 
@@ -12,7 +13,7 @@ use std::{
 use imgui::*;
 use imgui_rs_vulkan_renderer::*;
 
-use raytracing::{
+use rt::{
     color::{color_to_u32, Color},
     ray::Ray,
     vec3::Point3,
@@ -139,8 +140,6 @@ fn open_window() -> Result<(), Box<dyn Error>> {
             .build(|| {
                 ui.text("Oba");
             });
-
-        ui.end_frame_early();
     })?;
 
     return Ok(());
