@@ -110,7 +110,7 @@ impl<A: App> System<A> {
         };
 
         let mut imgui = Context::create();
-        // imgui.set_ini_filename(None);
+
         imgui
             .io_mut()
             .config_flags
@@ -141,7 +141,6 @@ impl<A: App> System<A> {
                 }),
             },
         ]);
-        // imgui.io_mut().config_docking_always_tab_bar = false;
         imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
         platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Rounded);
 
@@ -241,14 +240,15 @@ impl<A: App> System<A> {
 
     pub fn run<B>(self, mut app: A, mut ui_builder: B) -> Result<(), Box<dyn Error>>
     where
-        B: FnMut(&mut bool, &mut Ui, &mut A) + 'static,
+        B: FnMut(&mut bool, &mut Ui, &mut A, &mut VulkanContext, &mut Textures<vk::DescriptorSet>)
+            + 'static,
     {
         log::info!("Starting application");
 
         let Self {
             window,
             event_loop,
-            vulkan_context,
+            mut vulkan_context,
             command_buffer,
             mut swapchain,
             image_available_semaphore,
@@ -302,10 +302,14 @@ impl<A: App> System<A> {
                         .prepare_frame(imgui.io_mut(), &window)
                         .expect("Failed to prepare frame");
                     let mut ui = imgui.frame();
-                    ui_builder(&mut run, &mut ui, &mut app);
-                    ui.end_frame_early();
+                    ui_builder(
+                        &mut run,
+                        &mut ui,
+                        &mut app,
+                        &mut vulkan_context,
+                        renderer.textures(),
+                    );
                     platform.prepare_render(&ui, &window);
-                    imgui.update_platform_windows();
                     let draw_data = imgui.render();
 
                     if !run {
@@ -628,6 +632,7 @@ fn create_window(title: &str) -> Result<(Window, EventLoop<()>), Box<dyn Error>>
         .with_title(title)
         .with_inner_size(PhysicalSize::new(WIDTH, HEIGHT))
         .with_resizable(true)
+        .with_maximized(true)
         .build(&event_loop)?;
 
     Ok((window, event_loop))
@@ -859,19 +864,20 @@ fn create_vulkan_swapchain(
 
     // Swapchain present mode
     let present_mode = {
-        let present_modes = unsafe {
-            vulkan_context
-                .surface
-                .get_physical_device_surface_present_modes(
-                    vulkan_context.physical_device,
-                    vulkan_context.surface_khr,
-                )?
-        };
-        if present_modes.contains(&vk::PresentModeKHR::IMMEDIATE) {
-            vk::PresentModeKHR::IMMEDIATE
-        } else {
-            vk::PresentModeKHR::FIFO
-        }
+        vk::PresentModeKHR::MAILBOX
+        // let present_modes = unsafe {
+        //     vulkan_context
+        //         .surface
+        //         .get_physical_device_surface_present_modes(
+        //             vulkan_context.physical_device,
+        //             vulkan_context.surface_khr,
+        //         )?
+        // };
+        // if present_modes.contains(&vk::PresentModeKHR::IMMEDIATE) {
+        //     vk::PresentModeKHR::IMMEDIATE
+        // } else {
+        //     vk::PresentModeKHR::FIFO
+        // }
     };
     log::debug!("Swapchain present mode: {present_mode:?}");
 
@@ -1056,7 +1062,7 @@ fn record_command_buffers(
         })
         .clear_values(&[vk::ClearValue {
             color: vk::ClearColorValue {
-                float32: [0.1, 0.1, 0.1, 0.1],
+                float32: [0.1, 0.1, 0.1, 1.0],
             },
         }]);
 

@@ -1,8 +1,11 @@
 #![allow(unused)]
 
+mod app;
 mod common;
-mod rt;
-use common::*;
+use app::app::{Canvas, RaytracingApp};
+use ash::{vk, Device, Entry, Instance};
+use common::System;
+
 use simple_logger::SimpleLogger;
 
 use std::{
@@ -11,9 +14,12 @@ use std::{
 };
 
 use imgui::*;
-use imgui_rs_vulkan_renderer::*;
+use imgui_rs_vulkan_renderer::vulkan::{
+    create_vulkan_descriptor_pool, create_vulkan_descriptor_set,
+    create_vulkan_descriptor_set_layout,
+};
 
-use rt::{
+use raytracing::rt::{
     color::{color_to_u32, Color},
     ray::Ray,
     vec3::Point3,
@@ -130,15 +136,161 @@ fn run() {
     eprintln!("\nDone.");
 }
 
+fn render(canvas: &mut Canvas) {
+    // camera
+    let viewport_height = 2.0;
+    let viewport_width = ASPECT_RATIO * viewport_height;
+    let focal_length = 1.0;
+
+    let origin = Point3::new(0.0, 0.0, 0.0);
+    let horizontal = Vec3::new(viewport_width, 0.0, 0.0);
+    let vertical = Vec3::new(0.0, viewport_height, 0.0);
+    let lower_left_corner =
+        origin - horizontal / 2.0 - vertical / 2.0 - Vec3(0.0, 0.0, focal_length);
+
+    let mut milis = 0;
+    let mut frames_per_half_second = 0;
+
+    for y in 0..canvas.height {
+        for x in 0..canvas.width {
+            let u = ratio(x, WIDTH);
+            let v = ratio(y, HEIGHT);
+            let ray = Ray::new(
+                origin,
+                lower_left_corner + u * horizontal + v * vertical - origin,
+            );
+            let color = ray_color(ray);
+            assign_color(&mut canvas.data, x, y, &color);
+        }
+    }
+}
+
+fn get_texture(
+    canvas: &Canvas,
+    instance: &Instance,
+    device: &Device,
+    physical_device: vk::PhysicalDevice,
+    queue: vk::Queue,
+    command_pool: vk::CommandPool,
+    textures: &mut Textures<vk::DescriptorSet>,
+) -> TextureId {
+    println!("Creating new texture... ");
+
+    let memory_properties =
+        unsafe { instance.get_physical_device_memory_properties(physical_device) };
+    let data = unsafe { std::mem::transmute::<&[u32], &[u8]>(&canvas.data) };
+
+    let my_texture = Texture::from_rgba8(
+        device,
+        queue,
+        command_pool,
+        memory_properties,
+        canvas.width as u32,
+        canvas.height as u32,
+        data,
+    )
+    .expect("Failed to create texture from rgba8");
+
+    let descriptor_set_layout = create_vulkan_descriptor_set_layout(device).unwrap();
+
+    let descriptor_pool = create_vulkan_descriptor_pool(device, 1).unwrap();
+
+    let descriptor_set = create_vulkan_descriptor_set(
+        device,
+        descriptor_set_layout,
+        descriptor_pool,
+        my_texture.image_view,
+        my_texture.sampler,
+    )
+    .unwrap();
+
+    let texture_id = textures.insert(descriptor_set);
+
+    println!("Done: {}", texture_id.id());
+
+    return texture_id;
+}
+
+fn replace_texture(
+    id: TextureId,
+    canvas: &Canvas,
+    instance: &Instance,
+    device: &Device,
+    physical_device: vk::PhysicalDevice,
+    queue: vk::Queue,
+    command_pool: vk::CommandPool,
+    textures: &mut Textures<vk::DescriptorSet>,
+) {
+    let memory_properties =
+        unsafe { instance.get_physical_device_memory_properties(physical_device) };
+    let data = unsafe { std::mem::transmute::<&[u32], &[u8]>(canvas.data.as_ref()) };
+
+    let my_texture = Texture::from_rgba8(
+        device,
+        queue,
+        command_pool,
+        memory_properties,
+        canvas.width as u32,
+        canvas.height as u32,
+        data,
+    )
+    .expect("Failed to create texture from rgba8");
+
+    let descriptor_set_layout = create_vulkan_descriptor_set_layout(device).unwrap();
+
+    let descriptor_pool = create_vulkan_descriptor_pool(device, 1).unwrap();
+
+    let descriptor_set = create_vulkan_descriptor_set(
+        device,
+        descriptor_set_layout,
+        descriptor_pool,
+        my_texture.image_view,
+        my_texture.sampler,
+    )
+    .unwrap();
+
+    textures.replace(id, descriptor_set);
+}
+
 fn open_window() -> Result<(), Box<dyn Error>> {
     // SimpleLogger::new().init()?;
-    System::new("Iala kkk")?.run((), |run, ui, _| {
+    let mut system = System::new("Iala kkk")?;
+
+    let my_app = RaytracingApp::new();
+
+    let mut show = false;
+    let mut canvas = Canvas::new(400, 400);
+    let mut texture_id = TextureId::new(0);
+    system.run(my_app, move |run, ui, app, vulkan_context, textures| {
         ui.dockspace_over_main_viewport();
-        ui.show_demo_window(&mut true);
-        ui.window("Teste")
+        let region = ui.window("Output").build(|| {
+            if texture_id.id() == 0 {
+                texture_id = get_texture(
+                    &canvas,
+                    &vulkan_context.instance,
+                    &vulkan_context.device,
+                    vulkan_context.physical_device,
+                    vulkan_context.graphics_queue,
+                    vulkan_context.command_pool,
+                    textures,
+                );
+            }
+
+            Image::new(texture_id, [canvas.width as f32, canvas.height as f32]).build(ui);
+
+            return ui.content_region_avail();
+        });
+        ui.window("Settings")
             .size([400.0, 400.0], Condition::FirstUseEver)
             .build(|| {
-                ui.text("Oba");
+                if ui.button("Render") {
+                    let [width, height] = region.unwrap();
+                    if width as usize != canvas.width || height as usize != canvas.height {
+                        canvas = Canvas::new(width as usize, height as usize);
+                    }
+                    render(&mut canvas);
+                    show = !show;
+                }
             });
     })?;
 
