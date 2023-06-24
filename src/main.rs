@@ -74,36 +74,7 @@ fn ray_color(ray: Ray) -> Color {
 
 fn assign_color(canvas: &mut Canvas, x: usize, y: usize, color: &Color) {
     canvas.data[(canvas.height - 1 - y) * canvas.width + x] = color_to_u32(color);
-}
-
-fn render(canvas: &mut Canvas, state: &mut State) {
-    let start = Instant::now();
-    // camera
-    let viewport_height = 2.0;
-    let aspect_ratio = canvas.width as f64 / canvas.height as f64;
-    let viewport_width = aspect_ratio * viewport_height;
-    let focal_length = 1.0;
-
-    let origin = Point3::new(0.0, 0.0, 0.0);
-    let horizontal = Vec3::new(viewport_width, 0.0, 0.0);
-    let vertical = Vec3::new(0.0, viewport_height, 0.0);
-    let lower_left_corner =
-        origin - horizontal / 2.0 - vertical / 2.0 - Vec3(0.0, 0.0, focal_length);
-
-    for y in 0..canvas.height {
-        for x in 0..canvas.width {
-            let u = ratio(x, canvas.width);
-            let v = ratio(y, canvas.height);
-            let ray = Ray::new(
-                origin,
-                lower_left_corner + u * horizontal + v * vertical - origin,
-            );
-            let color = ray_color(ray);
-            assign_color(canvas, x, y, &color);
-        }
-    }
-
-    state.last_render_time = start.elapsed();
+    // canvas.data[(canvas.height - 1 - y) * canvas.width + x] = rand::thread_rng().gen();
 }
 
 fn main() {
@@ -195,50 +166,51 @@ impl TexturesUi {
         }
     }
 
-    /// Generate dummy texture
-    fn generate(
-        gl: &glow::Context,
-        textures: &mut imgui::Textures<glow::Texture>,
-    ) -> imgui::TextureId {
-        // const WIDTH: usize = 100;
-        // const HEIGHT: usize = 100;
+    fn render(&mut self, state: &mut State) {
+        if self.canvas.width != self.viewport_width || self.canvas.height != self.viewport_height {
+            self.canvas = Canvas::new(self.viewport_width, self.viewport_height);
+        }
+        let start = Instant::now();
+        // camera
+        let viewport_height = 2.0;
+        let aspect_ratio = self.canvas.width as f64 / self.canvas.height as f64;
+        let viewport_width = aspect_ratio * viewport_height;
+        let focal_length = 1.0;
 
-        let canvas = Canvas::new(100, 100);
-        let mut data = Vec::with_capacity(100 * 100);
-        for i in 0..100 {
-            for j in 0..100 {
-                // Insert RGB values
-                //
-                //
-                let x = (ratio(j, 100) * 255.0) as u32;
-                let y = (ratio(i, 100) * 255.0) as u32;
-                data.push(0xff << 24 | (x + y) / 2 << 16 | x << 8 | y);
-                // alhpa | blue | green | red
+        let origin = Point3::new(0.0, 0.0, 0.0);
+        let horizontal = Vec3::new(viewport_width, 0.0, 0.0);
+        let vertical = Vec3::new(0.0, viewport_height, 0.0);
+        let lower_left_corner =
+            origin - horizontal / 2.0 - vertical / 2.0 - Vec3(0.0, 0.0, focal_length);
+
+        for y in 0..self.canvas.height {
+            for x in 0..self.canvas.width {
+                let u = ratio(x, self.canvas.width);
+                let v = ratio(y, self.canvas.height);
+                let ray = Ray::new(
+                    origin,
+                    lower_left_corner + u * horizontal + v * vertical - origin,
+                );
+                let color = ray_color(ray);
+                assign_color(&mut self.canvas, x, y, &color);
             }
         }
 
-        let gl_texture = Self::new_texture(&canvas, gl);
-
-        let id = textures.insert(gl_texture);
-        id
+        state.last_render_time = start.elapsed();
     }
 
-    fn new_texture(canvas: &Canvas, gl: &glow::Context) -> NativeTexture {
+    fn new_texture(canvas: &Canvas, state: &State, gl: &glow::Context) -> NativeTexture {
         let gl_texture = unsafe { gl.create_texture() }.expect("unable to create GL texture");
         let data = unsafe { mem::transmute::<&[u32], &[u8]>(&canvas.data) };
+        let filter = match state.use_linear_filter {
+            true => glow::LINEAR as _,
+            false => glow::NEAREST as _,
+        };
         unsafe {
             gl.bind_texture(glow::TEXTURE_2D, Some(gl_texture));
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_MIN_FILTER,
-                glow::NEAREST as _,
-            );
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, filter);
 
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_MAG_FILTER,
-                glow::NEAREST as _,
-            );
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, filter);
             gl.tex_image_2d(
                 glow::TEXTURE_2D,
                 0,
@@ -262,7 +234,6 @@ impl TexturesUi {
         gl: &glow::Context,
     ) {
         ui.dockspace_over_main_viewport();
-        let token = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0]));
         ui.window("Settings")
             .size([400.0, 400.0], Condition::FirstUseEver)
             .build(|| {
@@ -274,13 +245,9 @@ impl TexturesUi {
                 ui.text(format!("FPS: {}", 1.0 / ui.io().delta_time));
                 ui.checkbox("Use linear filter", &mut state.use_linear_filter);
                 if ui.button("Render") {
-                    if self.canvas.width != self.viewport_width
-                        || self.canvas.height != self.viewport_height
-                    {
-                        self.canvas = Canvas::new(self.viewport_width, self.viewport_height);
-                    }
-                    render(&mut self.canvas, state);
-                    let texture = Self::new_texture(&self.canvas, gl);
+                    self.render(state);
+                    let texture = Self::new_texture(&self.canvas, state, gl);
+
                     if let Some(generated_texture) = self.generated_texture {
                         textures.replace(generated_texture, texture);
                     } else {
@@ -289,6 +256,7 @@ impl TexturesUi {
                     }
                 }
             });
+        let token = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0]));
         ui.window("Viewport")
             .size([400.0, 400.0], Condition::FirstUseEver)
             .build(|| {

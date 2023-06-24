@@ -24,6 +24,7 @@ log = "0.4"
 simple_logger = "4.0"
 winit = { version = "0.27.5", features = ["x11"] }
 image = "0.23"
+rand = "0.8.5"
 
 [features]
 # Features here are used to opt-out of compiling code that depends on certain
