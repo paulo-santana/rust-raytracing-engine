@@ -26,6 +26,8 @@ use raytracing::rt::{
     vec3::Vec3,
 };
 
+use crate::common::Texture;
+
 const ASPECT_RATIO: f64 = 16.0 / 9.0;
 const HEIGHT: usize = 540;
 const WIDTH: usize = (HEIGHT as f64 * ASPECT_RATIO) as usize;
