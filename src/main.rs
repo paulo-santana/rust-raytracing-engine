@@ -1,23 +1,14 @@
-#![allow(unused)]
+use std::time::Instant;
 
-mod app;
-mod common;
-use app::app::{Canvas, RaytracingApp};
-use ash::{vk, Device, Entry, Instance};
-use common::System;
+use __core::{mem, time};
+use glow::{HasContext, NativeTexture};
+use imgui::Condition;
 
-use simple_logger::SimpleLogger;
+use imgui_glow_renderer::Renderer;
 
-use std::{
-    error::Error,
-    time::{Duration, Instant},
-};
+mod utils;
 
 use imgui::*;
-use imgui_rs_vulkan_renderer::vulkan::{
-    create_vulkan_descriptor_pool, create_vulkan_descriptor_set,
-    create_vulkan_descriptor_set_layout,
-};
 
 use raytracing::rt::{
     color::{color_to_u32, Color},
@@ -26,11 +17,26 @@ use raytracing::rt::{
     vec3::Vec3,
 };
 
-use crate::common::Texture;
+struct Canvas {
+    data: Vec<u32>,
+    width: usize,
+    height: usize,
+}
 
-const ASPECT_RATIO: f64 = 16.0 / 9.0;
-const HEIGHT: usize = 540;
-const WIDTH: usize = (HEIGHT as f64 * ASPECT_RATIO) as usize;
+impl Canvas {
+    fn new(width: usize, height: usize) -> Canvas {
+        Canvas {
+            data: vec![0; width * height],
+            width,
+            height,
+        }
+    }
+}
+
+struct State {
+    use_linear_filter: bool,
+    last_render_time: time::Duration,
+}
 
 #[inline]
 fn ratio(a: usize, b: usize) -> f64 {
@@ -59,39 +65,23 @@ fn ray_color(ray: Ray) -> Color {
         let n = Vec3::unit_vector(&(ray.at(t) - Vec3(0.0, 0.0, -1.0)));
         return 0.5 * Color(n.0 + 1.0, n.1 + 1.0, n.2 + 1.0);
     }
-    return Color::black();
+    // return Color::black();
     let unit_direction = Color::unit_vector(&ray.direction);
     let t = 0.5 * unit_direction.y() + 0.5;
 
     return (1.0 - t) * Color::new(1.0, 1.0, 1.0) + t * Color::new(0.5, 0.7, 1.0);
 }
 
-#[inline]
-fn copy_pixel_data(buffer: &[u32]) -> Vec<u8> {
-    buffer.iter().map(|x| x.to_be_bytes()).flatten().collect()
+fn assign_color(canvas: &mut Canvas, x: usize, y: usize, color: &Color) {
+    canvas.data[(canvas.height - 1 - y) * canvas.width + x] = color_to_u32(color);
 }
 
-// fn copy_pixel_data<'a>(buffer: &[u32], dest: &'a mut [u8]) -> &'a [u8] {
-//     unsafe {
-//         let mut ptr = dest.as_mut_ptr() as *mut u32;
-//         for i in 0..(buffer.len() as isize) {
-//             *(ptr).offset(i) = buffer[i as usize].to_be();
-//         }
-//     }
-//     return dest;
-// }
-
-fn assign_color(buffer: &mut [u32], x: usize, y: usize, color: &Color) {
-    buffer[(HEIGHT - 1 - y) * WIDTH + x] = color_to_u32(color);
-}
-
-fn run() {
-    let mut buffer = [0; WIDTH * HEIGHT];
-    let mut pixel_data: Vec<u8> = vec![0; WIDTH * 4 * HEIGHT];
-
+fn render(canvas: &mut Canvas, state: &mut State) {
+    let start = Instant::now();
     // camera
     let viewport_height = 2.0;
-    let viewport_width = ASPECT_RATIO * viewport_height;
+    let aspect_ratio = canvas.width as f64 / canvas.height as f64;
+    let viewport_width = aspect_ratio * viewport_height;
     let focal_length = 1.0;
 
     let origin = Point3::new(0.0, 0.0, 0.0);
@@ -99,208 +89,224 @@ fn run() {
     let vertical = Vec3::new(0.0, viewport_height, 0.0);
     let lower_left_corner =
         origin - horizontal / 2.0 - vertical / 2.0 - Vec3(0.0, 0.0, focal_length);
-
-    let mut milis = 0;
-    let mut frames_per_half_second = 0;
-    'running: loop {
-        let now = Instant::now();
-
-        // if handle_events(&mut event_pump) == true {
-        //     break 'running;
-        // }
-
-        for y in 0..HEIGHT {
-            for x in 0..WIDTH {
-                let u = ratio(x, WIDTH);
-                let v = ratio(y, HEIGHT);
-                let ray = Ray::new(
-                    origin,
-                    lower_left_corner + u * horizontal + v * vertical - origin,
-                );
-                let color = ray_color(ray);
-                assign_color(&mut buffer, x, y, &color);
-            }
-        }
-
-        let data = copy_pixel_data(&buffer);
-        // let data = copy_pixel_data(&buffer, &mut pixel_data);
-
-        milis += now.elapsed().as_millis();
-        frames_per_half_second += 1;
-        if (milis >= 500) {
-            eprint!("\rfps: {} ", frames_per_half_second * 2);
-
-            frames_per_half_second = 0;
-            milis = 0;
-        }
-    }
-
-    eprintln!("\nDone.");
-}
-
-fn render(canvas: &mut Canvas) {
-    // camera
-    let viewport_height = 2.0;
-    let viewport_width = ASPECT_RATIO * viewport_height;
-    let focal_length = 1.0;
-
-    let origin = Point3::new(0.0, 0.0, 0.0);
-    let horizontal = Vec3::new(viewport_width, 0.0, 0.0);
-    let vertical = Vec3::new(0.0, viewport_height, 0.0);
-    let lower_left_corner =
-        origin - horizontal / 2.0 - vertical / 2.0 - Vec3(0.0, 0.0, focal_length);
-
-    let mut milis = 0;
-    let mut frames_per_half_second = 0;
 
     for y in 0..canvas.height {
         for x in 0..canvas.width {
-            let u = ratio(x, WIDTH);
-            let v = ratio(y, HEIGHT);
+            let u = ratio(x, canvas.width);
+            let v = ratio(y, canvas.height);
             let ray = Ray::new(
                 origin,
                 lower_left_corner + u * horizontal + v * vertical - origin,
             );
             let color = ray_color(ray);
-            assign_color(&mut canvas.data, x, y, &color);
+            assign_color(canvas, x, y, &color);
         }
     }
-}
 
-fn get_texture(
-    canvas: &Canvas,
-    instance: &Instance,
-    device: &Device,
-    physical_device: vk::PhysicalDevice,
-    queue: vk::Queue,
-    command_pool: vk::CommandPool,
-    textures: &mut Textures<vk::DescriptorSet>,
-) -> TextureId {
-    println!("Creating new texture... ");
-
-    let memory_properties =
-        unsafe { instance.get_physical_device_memory_properties(physical_device) };
-    let data = unsafe { std::mem::transmute::<&[u32], &[u8]>(&canvas.data) };
-
-    let my_texture = Texture::from_rgba8(
-        device,
-        queue,
-        command_pool,
-        memory_properties,
-        canvas.width as u32,
-        canvas.height as u32,
-        data,
-    )
-    .expect("Failed to create texture from rgba8");
-
-    let descriptor_set_layout = create_vulkan_descriptor_set_layout(device).unwrap();
-
-    let descriptor_pool = create_vulkan_descriptor_pool(device, 1).unwrap();
-
-    let descriptor_set = create_vulkan_descriptor_set(
-        device,
-        descriptor_set_layout,
-        descriptor_pool,
-        my_texture.image_view,
-        my_texture.sampler,
-    )
-    .unwrap();
-
-    let texture_id = textures.insert(descriptor_set);
-
-    println!("Done: {}", texture_id.id());
-
-    return texture_id;
-}
-
-fn replace_texture(
-    id: TextureId,
-    canvas: &Canvas,
-    instance: &Instance,
-    device: &Device,
-    physical_device: vk::PhysicalDevice,
-    queue: vk::Queue,
-    command_pool: vk::CommandPool,
-    textures: &mut Textures<vk::DescriptorSet>,
-) {
-    let memory_properties =
-        unsafe { instance.get_physical_device_memory_properties(physical_device) };
-    let data = unsafe { std::mem::transmute::<&[u32], &[u8]>(canvas.data.as_ref()) };
-
-    let my_texture = Texture::from_rgba8(
-        device,
-        queue,
-        command_pool,
-        memory_properties,
-        canvas.width as u32,
-        canvas.height as u32,
-        data,
-    )
-    .expect("Failed to create texture from rgba8");
-
-    let descriptor_set_layout = create_vulkan_descriptor_set_layout(device).unwrap();
-
-    let descriptor_pool = create_vulkan_descriptor_pool(device, 1).unwrap();
-
-    let descriptor_set = create_vulkan_descriptor_set(
-        device,
-        descriptor_set_layout,
-        descriptor_pool,
-        my_texture.image_view,
-        my_texture.sampler,
-    )
-    .unwrap();
-
-    textures.replace(id, descriptor_set);
-}
-
-fn open_window() -> Result<(), Box<dyn Error>> {
-    // SimpleLogger::new().init()?;
-    let mut system = System::new("Iala kkk")?;
-
-    let my_app = RaytracingApp::new();
-
-    let mut show = false;
-    let mut canvas = Canvas::new(400, 400);
-    let mut texture_id = TextureId::new(0);
-    system.run(my_app, move |run, ui, app, vulkan_context, textures| {
-        ui.dockspace_over_main_viewport();
-        let region = ui.window("Output").build(|| {
-            if texture_id.id() == 0 {
-                texture_id = get_texture(
-                    &canvas,
-                    &vulkan_context.instance,
-                    &vulkan_context.device,
-                    vulkan_context.physical_device,
-                    vulkan_context.graphics_queue,
-                    vulkan_context.command_pool,
-                    textures,
-                );
-            }
-
-            Image::new(texture_id, [canvas.width as f32, canvas.height as f32]).build(ui);
-
-            return ui.content_region_avail();
-        });
-        ui.window("Settings")
-            .size([400.0, 400.0], Condition::FirstUseEver)
-            .build(|| {
-                if ui.button("Render") {
-                    let [width, height] = region.unwrap();
-                    if width as usize != canvas.width || height as usize != canvas.height {
-                        canvas = Canvas::new(width as usize, height as usize);
-                    }
-                    render(&mut canvas);
-                    show = !show;
-                }
-            });
-    })?;
-
-    return Ok(());
+    state.last_render_time = start.elapsed();
 }
 
 fn main() {
-    // vulkan();
-    open_window().expect("Failed to open window");
-    // run();
+    let mut state = State {
+        use_linear_filter: false,
+        last_render_time: time::Duration::ZERO,
+    };
+    let (event_loop, window) = utils::create_window("Custom textures", glutin::GlRequest::Latest);
+    let (mut winit_platform, mut imgui_context) = utils::imgui_init(&window);
+    let gl = utils::glow_context(&window);
+    // This time, we tell OpenGL this is an sRGB framebuffer and OpenGL will
+    // do the conversion to sSGB space for us after the fragment shader.
+    unsafe { gl.enable(glow::FRAMEBUFFER_SRGB) };
+
+    let mut textures = imgui::Textures::<glow::Texture>::default();
+    // Note that `output_srgb` is `false`. This is because we set
+    // `glow::FRAMEBUFFER_SRGB` so we don't have to manually do the conversion
+    // in the shader.
+    let mut ig_renderer = Renderer::initialize(&gl, &mut imgui_context, &mut textures, false)
+        .expect("failed to create renderer");
+    let mut textures_ui = TexturesUi::new();
+
+    let mut last_frame = Instant::now();
+    event_loop.run(move |event, _, control_flow| {
+        // Note we can potentially make the loop more efficient by
+        // changing the `Poll` (default) value to `ControlFlow::Wait`
+        // but be careful to test on all target platforms!
+        *control_flow = glutin::event_loop::ControlFlow::Poll;
+
+        match event {
+            glutin::event::Event::NewEvents(_) => {
+                let now = Instant::now();
+                imgui_context
+                    .io_mut()
+                    .update_delta_time(now.duration_since(last_frame));
+                last_frame = now;
+            }
+            glutin::event::Event::MainEventsCleared => {
+                winit_platform
+                    .prepare_frame(imgui_context.io_mut(), window.window())
+                    .unwrap();
+
+                window.window().request_redraw();
+            }
+            glutin::event::Event::RedrawRequested(_) => {
+                unsafe { gl.clear(glow::COLOR_BUFFER_BIT) };
+
+                let ui = imgui_context.frame();
+                textures_ui.show(ui, &mut state, &mut textures, &gl);
+
+                winit_platform.prepare_render(ui, window.window());
+                let draw_data = imgui_context.render();
+                ig_renderer
+                    .render(&gl, &textures, draw_data)
+                    .expect("error rendering imgui");
+
+                window.swap_buffers().unwrap();
+            }
+            glutin::event::Event::WindowEvent {
+                event: glutin::event::WindowEvent::CloseRequested,
+                ..
+            } => {
+                *control_flow = glutin::event_loop::ControlFlow::Exit;
+            }
+            glutin::event::Event::LoopDestroyed => {
+                ig_renderer.destroy(&gl);
+            }
+            event => {
+                winit_platform.handle_event(imgui_context.io_mut(), window.window(), &event);
+            }
+        }
+    });
 }
+
+struct TexturesUi {
+    generated_texture: Option<imgui::TextureId>,
+    canvas: Canvas,
+    viewport_width: usize,
+    viewport_height: usize,
+}
+
+impl TexturesUi {
+    fn new() -> Self {
+        Self {
+            generated_texture: None,
+            viewport_width: 100,
+            viewport_height: 100,
+            canvas: Canvas::new(100, 100),
+        }
+    }
+
+    /// Generate dummy texture
+    fn generate(
+        gl: &glow::Context,
+        textures: &mut imgui::Textures<glow::Texture>,
+    ) -> imgui::TextureId {
+        // const WIDTH: usize = 100;
+        // const HEIGHT: usize = 100;
+
+        let canvas = Canvas::new(100, 100);
+        let mut data = Vec::with_capacity(100 * 100);
+        for i in 0..100 {
+            for j in 0..100 {
+                // Insert RGB values
+                //
+                //
+                let x = (ratio(j, 100) * 255.0) as u32;
+                let y = (ratio(i, 100) * 255.0) as u32;
+                data.push(0xff << 24 | (x + y) / 2 << 16 | x << 8 | y);
+                // alhpa | blue | green | red
+            }
+        }
+
+        let gl_texture = Self::new_texture(&canvas, gl);
+
+        let id = textures.insert(gl_texture);
+        id
+    }
+
+    fn new_texture(canvas: &Canvas, gl: &glow::Context) -> NativeTexture {
+        let gl_texture = unsafe { gl.create_texture() }.expect("unable to create GL texture");
+        let data = unsafe { mem::transmute::<&[u32], &[u8]>(&canvas.data) };
+        unsafe {
+            gl.bind_texture(glow::TEXTURE_2D, Some(gl_texture));
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MIN_FILTER,
+                glow::NEAREST as _,
+            );
+
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MAG_FILTER,
+                glow::NEAREST as _,
+            );
+            gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA as _, // When generating a texture like this, you're probably working in linear color space
+                canvas.width as _,
+                canvas.height as _,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                Some(data),
+            )
+        }
+        return gl_texture;
+    }
+
+    fn show(
+        &mut self,
+        ui: &imgui::Ui,
+        state: &mut State,
+        textures: &mut imgui::Textures<glow::Texture>,
+        gl: &glow::Context,
+    ) {
+        ui.dockspace_over_main_viewport();
+        let token = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0]));
+        ui.window("Settings")
+            .size([400.0, 400.0], Condition::FirstUseEver)
+            .build(|| {
+                ui.text(format!(
+                    "width: {}, height: {}",
+                    self.viewport_width, self.viewport_height
+                ));
+                ui.text(format!("last render time: {:?}", state.last_render_time));
+                ui.text(format!("FPS: {}", 1.0 / ui.io().delta_time));
+                ui.checkbox("Use linear filter", &mut state.use_linear_filter);
+                if ui.button("Render") {
+                    if self.canvas.width != self.viewport_width
+                        || self.canvas.height != self.viewport_height
+                    {
+                        self.canvas = Canvas::new(self.viewport_width, self.viewport_height);
+                    }
+                    render(&mut self.canvas, state);
+                    let texture = Self::new_texture(&self.canvas, gl);
+                    if let Some(generated_texture) = self.generated_texture {
+                        textures.replace(generated_texture, texture);
+                    } else {
+                        let id = textures.insert(texture);
+                        self.generated_texture = Some(id);
+                    }
+                }
+            });
+        ui.window("Viewport")
+            .size([400.0, 400.0], Condition::FirstUseEver)
+            .build(|| {
+                let [width, height] = ui.content_region_avail();
+                self.viewport_width = width as usize;
+                self.viewport_height = height as usize;
+                if let Some(generated_texture) = self.generated_texture {
+                    imgui::Image::new(
+                        generated_texture,
+                        [self.canvas.width as f32, self.canvas.height as f32],
+                    )
+                    .build(ui);
+                }
+            });
+        token.pop();
+    }
+}
+
+// fn main() -> Result<(), Box<dyn Error>> {
+//     Ok(())
+// }

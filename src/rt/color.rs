@@ -26,5 +26,5 @@ pub fn color_to_u32(pixel_color: &Color) -> u32 {
     let g = (pixel_color.1 * 255.999) as u32;
     let b = (pixel_color.2 * 255.999) as u32;
 
-    return r << 16 | g << 8 | b;
+    return 0xff << 24 | b << 16 | g << 8 | r;
 }
