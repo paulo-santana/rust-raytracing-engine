@@ -66,6 +66,14 @@ impl ops::Add<Vec3> for Vec3 {
     }
 }
 
+impl ops::Add<f64> for Vec3 {
+    type Output = Vec3;
+
+    fn add(self, value: f64) -> Self::Output {
+        Vec3(self.0 + value, self.1 + value, self.2 + value)
+    }
+}
+
 // impl ops::Add<Vec3> for &Vec3 {
 //     type Output = Vec3;
 //
