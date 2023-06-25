@@ -1,8 +1,7 @@
-use std::time::Instant;
+use std::{fs::File, io::Write, time::Instant};
 
 use __core::{mem, time};
 use glow::{HasContext, NativeTexture};
-use imgui::Condition;
 
 use imgui_glow_renderer::Renderer;
 
@@ -11,7 +10,7 @@ mod utils;
 use imgui::*;
 
 use raytracing::rt::{
-    color::{color_to_u32, Color},
+    color::{color_to_u32, write_color, Color},
     ray::Ray,
     vec3::Point3,
     vec3::Vec3,
@@ -19,14 +18,14 @@ use raytracing::rt::{
 
 struct Canvas {
     data: Vec<u32>,
-    width: usize,
-    height: usize,
+    width: u32,
+    height: u32,
 }
 
 impl Canvas {
-    fn new(width: usize, height: usize) -> Canvas {
+    fn new(width: u32, height: u32) -> Canvas {
         Canvas {
-            data: vec![0; width * height],
+            data: vec![0; (width * height) as usize],
             width,
             height,
         }
@@ -38,8 +37,21 @@ struct State {
     last_render_time: time::Duration,
 }
 
+fn save_ppm<T: Write>(out: &mut T, canvas: &Canvas) {
+    out.write(format!("P3\n{} {}\n255\n", canvas.width, canvas.height).as_bytes())
+        .expect("Failed writing the ppm header");
+    for y in 0..canvas.height {
+        for x in 0..canvas.width {
+            write_color(
+                out,
+                &Color::from_rgba(canvas.data[(y * canvas.width + x) as usize]),
+            );
+        }
+    }
+}
+
 #[inline]
-fn ratio(a: usize, b: usize) -> f64 {
+fn ratio(a: u32, b: u32) -> f64 {
     a as f64 / (b as f64 - 1.0)
 }
 
@@ -72,8 +84,8 @@ fn ray_color(ray: Ray) -> Color {
     return (1.0 - t) * Color::new(1.0, 1.0, 1.0) + t * Color::new(0.5, 0.7, 1.0);
 }
 
-fn assign_color(canvas: &mut Canvas, x: usize, y: usize, color: &Color) {
-    canvas.data[(canvas.height - 1 - y) * canvas.width + x] = color_to_u32(color);
+fn assign_color(canvas: &mut Canvas, x: u32, y: u32, color: &Color) {
+    canvas.data[((canvas.height - 1 - y) * canvas.width + x) as usize] = color_to_u32(color);
     // canvas.data[(canvas.height - 1 - y) * canvas.width + x] = rand::thread_rng().gen();
 }
 
@@ -152,8 +164,8 @@ fn main() {
 struct TexturesUi {
     generated_texture: Option<imgui::TextureId>,
     canvas: Canvas,
-    viewport_width: usize,
-    viewport_height: usize,
+    viewport_width: u32,
+    viewport_height: u32,
 }
 
 impl TexturesUi {
@@ -167,8 +179,8 @@ impl TexturesUi {
     }
 
     fn render(&mut self, state: &mut State) {
-        if self.canvas.width != self.viewport_width || self.canvas.height != self.viewport_height {
-            self.canvas = Canvas::new(self.viewport_width, self.viewport_height);
+        if self.canvas.data.len() != (self.canvas.width * self.canvas.height) as usize {
+            self.canvas = Canvas::new(self.canvas.width, self.canvas.height);
         }
         let start = Instant::now();
         // camera
@@ -244,16 +256,34 @@ impl TexturesUi {
                 ui.text(format!("last render time: {:?}", state.last_render_time));
                 ui.text(format!("FPS: {}", 1.0 / ui.io().delta_time));
                 ui.checkbox("Use linear filter", &mut state.use_linear_filter);
+                ui.input_scalar("Canvas width", &mut self.canvas.width)
+                    .build();
+                ui.input_scalar("Canvas height", &mut self.canvas.height)
+                    .build();
                 if ui.button("Render") {
-                    self.render(state);
-                    let texture = Self::new_texture(&self.canvas, state, gl);
+                    println!(
+                        "rendering new {}x{} image",
+                        self.canvas.width, self.canvas.height
+                    );
+                }
 
-                    if let Some(generated_texture) = self.generated_texture {
-                        textures.replace(generated_texture, texture);
-                    } else {
-                        let id = textures.insert(texture);
-                        self.generated_texture = Some(id);
-                    }
+                if ui.button("Save to ppm") {
+                    println!("Saving canvas to canvas.ppm");
+
+                    let mut file = File::create("canvas.ppm").expect("Failed to open 'canvas.ppm'");
+
+                    save_ppm(&mut file, &self.canvas);
+                }
+                self.render(state);
+                let texture = Self::new_texture(&self.canvas, state, gl);
+
+                if let Some(generated_texture) = self.generated_texture {
+                    let old_texture = textures.get(generated_texture).unwrap();
+                    unsafe { gl.delete_texture(*old_texture) };
+                    textures.replace(generated_texture, texture);
+                } else {
+                    let id = textures.insert(texture);
+                    self.generated_texture = Some(id);
                 }
             });
         let token = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0]));
@@ -261,14 +291,10 @@ impl TexturesUi {
             .size([400.0, 400.0], Condition::FirstUseEver)
             .build(|| {
                 let [width, height] = ui.content_region_avail();
-                self.viewport_width = width as usize;
-                self.viewport_height = height as usize;
+                self.viewport_width = width as u32;
+                self.viewport_height = height as u32;
                 if let Some(generated_texture) = self.generated_texture {
-                    imgui::Image::new(
-                        generated_texture,
-                        [self.canvas.width as f32, self.canvas.height as f32],
-                    )
-                    .build(ui);
+                    imgui::Image::new(generated_texture, [width, height]).build(ui);
                 }
             });
         token.pop();

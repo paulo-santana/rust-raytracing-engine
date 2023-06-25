@@ -6,6 +6,18 @@ impl Color {
     pub fn black() -> Color {
         Color(0.0, 0.0, 0.0)
     }
+
+    pub fn white() -> Color {
+        Color(1.0, 1.0, 1.0)
+    }
+
+    pub fn from_rgba(rgba: u32) -> Color {
+        Color(
+            (rgba & 0xff) as f64 / 255.999,
+            (rgba >> 8 & 0xff) as f64 / 255.999,
+            (rgba >> 16 & 0xff) as f64 / 255.999,
+        )
+    }
 }
 
 pub fn write_color<T: Write>(out: &mut T, pixel_color: &Color) {
