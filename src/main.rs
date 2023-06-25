@@ -226,7 +226,7 @@ impl TexturesUi {
             gl.tex_image_2d(
                 glow::TEXTURE_2D,
                 0,
-                glow::RGBA as _, // When generating a texture like this, you're probably working in linear color space
+                glow::SRGB8 as _, // We are working on sRGB color space somehow
                 canvas.width as _,
                 canvas.height as _,
                 0,
