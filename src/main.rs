@@ -211,6 +211,23 @@ impl TexturesUi {
         state.last_render_time = start.elapsed();
     }
 
+    fn prepare_texture(
+        &mut self,
+        texture: NativeTexture,
+        textures: &mut imgui::Textures<glow::Texture>,
+        gl: &glow::Context,
+    ) {
+        if let Some(generated_texture) = self.generated_texture {
+            let old_texture = textures.get(generated_texture).unwrap();
+
+            unsafe { gl.delete_texture(*old_texture) };
+            textures.replace(generated_texture, texture);
+        } else {
+            let id = textures.insert(texture);
+            self.generated_texture = Some(id);
+        }
+    }
+
     fn new_texture(canvas: &Canvas, state: &State, gl: &glow::Context) -> NativeTexture {
         let gl_texture = unsafe { gl.create_texture() }.expect("unable to create GL texture");
         let data = unsafe { mem::transmute::<&[u32], &[u8]>(&canvas.data) };
@@ -246,6 +263,7 @@ impl TexturesUi {
         gl: &glow::Context,
     ) {
         ui.dockspace_over_main_viewport();
+
         ui.window("Settings")
             .size([400.0, 400.0], Condition::FirstUseEver)
             .build(|| {
@@ -276,16 +294,9 @@ impl TexturesUi {
                 }
                 self.render(state);
                 let texture = Self::new_texture(&self.canvas, state, gl);
-
-                if let Some(generated_texture) = self.generated_texture {
-                    let old_texture = textures.get(generated_texture).unwrap();
-                    unsafe { gl.delete_texture(*old_texture) };
-                    textures.replace(generated_texture, texture);
-                } else {
-                    let id = textures.insert(texture);
-                    self.generated_texture = Some(id);
-                }
+                self.prepare_texture(texture, textures, gl);
             });
+
         let token = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0]));
         ui.window("Viewport")
             .size([400.0, 400.0], Condition::FirstUseEver)
@@ -293,8 +304,8 @@ impl TexturesUi {
                 let [width, height] = ui.content_region_avail();
                 self.viewport_width = width as u32;
                 self.viewport_height = height as u32;
-                if let Some(generated_texture) = self.generated_texture {
-                    imgui::Image::new(generated_texture, [width, height]).build(ui);
+                if let Some(texture) = self.generated_texture {
+                    imgui::Image::new(texture, [width, height]).build(ui);
                 }
             });
         token.pop();
