@@ -1,3 +1,5 @@
+use std::error::Error;
+use std::io::Read;
 use std::{fs::File, io::Write, time::Instant};
 
 use __core::{mem, time};
@@ -15,6 +17,7 @@ use raytracing::rt::{
     vec3::Point3,
     vec3::Vec3,
 };
+use serde::{Deserialize, Serialize};
 
 struct Canvas {
     data: Vec<u32>,
@@ -32,9 +35,27 @@ impl Canvas {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 struct State {
     use_linear_filter: bool,
+    canvas_width: u32,
+    canvas_height: u32,
+    #[serde(skip_serializing, skip_deserializing)]
     last_render_time: time::Duration,
+    #[serde(skip_serializing, skip_deserializing)]
+    error_msg: String,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        State {
+            use_linear_filter: false,
+            canvas_width: 400,
+            canvas_height: 270,
+            last_render_time: time::Duration::ZERO,
+            error_msg: String::default(),
+        }
+    }
 }
 
 fn save_ppm<T: Write>(out: &mut T, canvas: &Canvas) {
@@ -89,10 +110,31 @@ fn assign_color(canvas: &mut Canvas, x: u32, y: u32, color: &Color) {
     // canvas.data[(canvas.height - 1 - y) * canvas.width + x] = rand::thread_rng().gen();
 }
 
+fn save_state(state: &State) -> Result<(), Box<dyn Error>> {
+    let state = serde_yaml::to_string(state)?;
+    let mut save_file = File::create("state.yaml")?;
+    save_file.write_all(state.as_bytes())?;
+    return Ok(());
+}
+
+fn load_state() -> Result<State, Box<dyn Error>> {
+    let mut state_file = File::open("state.yaml")?;
+    let mut content = String::default();
+    state_file.read_to_string(&mut content)?;
+    let state: State = serde_yaml::from_str(&content)?;
+    return Ok(state);
+}
+
 fn main() {
-    let mut state = State {
-        use_linear_filter: false,
-        last_render_time: time::Duration::ZERO,
+    let mut state = match load_state() {
+        Ok(content) => content,
+        Err(err) => {
+            eprintln!("Failed to read state file: {}", err);
+            State {
+                error_msg: format!("Failed to read state file: {}\nusing default settings", err),
+                ..State::default()
+            }
+        }
     };
     let (event_loop, window) = utils::create_window("Custom textures", glutin::GlRequest::Latest);
     let (mut winit_platform, mut imgui_context) = utils::imgui_init(&window);
@@ -274,16 +316,14 @@ impl TexturesUi {
                 ui.text(format!("last render time: {:?}", state.last_render_time));
                 ui.text(format!("FPS: {}", 1.0 / ui.io().delta_time));
                 ui.checkbox("Use linear filter", &mut state.use_linear_filter);
-                ui.input_scalar("Canvas width", &mut self.canvas.width)
-                    .build();
-                ui.input_scalar("Canvas height", &mut self.canvas.height)
-                    .build();
-                if ui.button("Render") {
-                    println!(
-                        "rendering new {}x{} image",
-                        self.canvas.width, self.canvas.height
-                    );
-                }
+                Drag::new("Canvas width")
+                    .range(20, self.viewport_width)
+                    .speed(1.0)
+                    .build(ui, &mut self.canvas.width);
+                Drag::new("Canvas height")
+                    .range(20, self.viewport_height)
+                    .speed(1.0)
+                    .build(ui, &mut self.canvas.height);
 
                 if ui.button("Save to ppm") {
                     println!("Saving canvas to canvas.ppm");
@@ -292,6 +332,17 @@ impl TexturesUi {
 
                     save_ppm(&mut file, &self.canvas);
                 }
+
+                if ui.button("Save Settings") {
+                    if let Err(err) = save_state(state) {
+                        state.error_msg = format!("Failed saving state: {:?}", err);
+                    }
+                }
+
+                if !state.error_msg.is_empty() {
+                    ui.text_colored([1.0, 0.4, 0.1, 1.0], &state.error_msg);
+                }
+
                 self.render(state);
                 let texture = Self::new_texture(&self.canvas, state, gl);
                 self.prepare_texture(texture, textures, gl);
@@ -311,7 +362,3 @@ impl TexturesUi {
         token.pop();
     }
 }
-
-// fn main() -> Result<(), Box<dyn Error>> {
-//     Ok(())
-// }
