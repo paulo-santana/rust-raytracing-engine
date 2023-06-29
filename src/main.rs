@@ -149,7 +149,7 @@ fn main() {
     // in the shader.
     let mut ig_renderer = Renderer::initialize(&gl, &mut imgui_context, &mut textures, false)
         .expect("failed to create renderer");
-    let mut textures_ui = TexturesUi::new();
+    let mut textures_ui = Program::new();
 
     let mut last_frame = Instant::now();
     event_loop.run(move |event, _, control_flow| {
@@ -203,14 +203,14 @@ fn main() {
     });
 }
 
-struct TexturesUi {
+struct Program {
     generated_texture: Option<imgui::TextureId>,
     canvas: Canvas,
     viewport_width: u32,
     viewport_height: u32,
 }
 
-impl TexturesUi {
+impl Program {
     fn new() -> Self {
         Self {
             generated_texture: None,
@@ -319,17 +319,17 @@ impl TexturesUi {
                 Drag::new("Canvas width")
                     .range(20, self.viewport_width)
                     .speed(1.0)
-                    .build(ui, &mut self.canvas.width);
+                    .build(ui, &mut state.canvas_width);
                 Drag::new("Canvas height")
                     .range(20, self.viewport_height)
                     .speed(1.0)
-                    .build(ui, &mut self.canvas.height);
+                    .build(ui, &mut state.canvas_height);
+
+                self.canvas.width = state.canvas_width;
+                self.canvas.height = state.canvas_height;
 
                 if ui.button("Save to ppm") {
-                    println!("Saving canvas to canvas.ppm");
-
                     let mut file = File::create("canvas.ppm").expect("Failed to open 'canvas.ppm'");
-
                     save_ppm(&mut file, &self.canvas);
                 }
 
