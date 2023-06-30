@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use std::error::Error;
 use std::io::Read;
 use std::{fs::File, io::Write, time::Instant};
@@ -38,6 +39,7 @@ impl Canvas {
 #[derive(Serialize, Deserialize)]
 struct State {
     use_linear_filter: bool,
+    use_threads: bool,
     canvas_width: u32,
     canvas_height: u32,
     #[serde(skip_serializing, skip_deserializing)]
@@ -50,6 +52,7 @@ impl Default for State {
     fn default() -> Self {
         State {
             use_linear_filter: false,
+            use_threads: false,
             canvas_width: 400,
             canvas_height: 270,
             last_render_time: time::Duration::ZERO,
@@ -237,16 +240,40 @@ impl Program {
         let lower_left_corner =
             origin - horizontal / 2.0 - vertical / 2.0 - Vec3(0.0, 0.0, focal_length);
 
-        for y in 0..self.canvas.height {
-            for x in 0..self.canvas.width {
-                let u = ratio(x, self.canvas.width);
-                let v = ratio(y, self.canvas.height);
-                let ray = Ray::new(
-                    origin,
-                    lower_left_corner + u * horizontal + v * vertical - origin,
-                );
-                let color = ray_color(ray);
-                assign_color(&mut self.canvas, x, y, &color);
+        match state.use_threads {
+            true => {
+                self.canvas
+                    .data
+                    .par_chunks_mut(self.canvas.width as usize)
+                    .enumerate()
+                    .for_each(|(row_number, row)| {
+                        for x in 0..self.canvas.width {
+                            let y = self.canvas.height - row_number as u32 - 1;
+                            let u = ratio(x, self.canvas.width);
+                            let v = ratio(y, self.canvas.height);
+                            let ray = Ray::new(
+                                origin,
+                                lower_left_corner + u * horizontal + v * vertical - origin,
+                            );
+                            let color = ray_color(ray);
+                            row[x as usize] = color_to_u32(&color);
+                            // assign_color(&mut self.canvas, x, y, &color);
+                        }
+                    });
+            }
+            false => {
+                for y in 0..self.canvas.height {
+                    for x in 0..self.canvas.width {
+                        let u = ratio(x, self.canvas.width);
+                        let v = ratio(y, self.canvas.height);
+                        let ray = Ray::new(
+                            origin,
+                            lower_left_corner + u * horizontal + v * vertical - origin,
+                        );
+                        let color = ray_color(ray);
+                        assign_color(&mut self.canvas, x, y, &color);
+                    }
+                }
             }
         }
 
@@ -316,6 +343,7 @@ impl Program {
                 ui.text(format!("last render time: {:?}", state.last_render_time));
                 ui.text(format!("FPS: {}", 1.0 / ui.io().delta_time));
                 ui.checkbox("Use linear filter", &mut state.use_linear_filter);
+                ui.checkbox("Use multithreaded rendering", &mut state.use_threads);
                 Drag::new("Canvas width")
                     .range(20, self.viewport_width)
                     .speed(1.0)

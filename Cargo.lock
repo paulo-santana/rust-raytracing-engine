@@ -1290,6 +1290,7 @@ dependencies = [
  "memoffset 0.6.5",
  "rand",
  "raw-window-handle 0.5.2",
+ "rayon",
  "serde",
  "serde_yaml",
  "simple_logger",
