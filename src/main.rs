@@ -20,6 +20,57 @@ use raytracing::rt::{
 };
 use serde::{Deserialize, Serialize};
 
+const DEFAULT_WIDTH: u32 = 400;
+const DEFAULT_HEIGHT: u32 = 200;
+
+struct Camera {
+    position: Point3,
+    aspect_ratio: f64,
+    canvas_width: u32,
+    canvas_height: u32,
+    viewport_width: f64,
+    viewport_height: f64,
+    horizontal: Vec3,
+    vertical: Vec3,
+    lower_left_corner: Vec3,
+}
+
+impl Camera {
+    fn new(position: Point3, canvas_width: u32, canvas_height: u32) -> Camera {
+        let viewport_height = 2.0;
+        let aspect_ratio = canvas_width as f64 / canvas_height as f64;
+        let viewport_width = aspect_ratio * viewport_height;
+        let focal_length = 1.0;
+
+        let horizontal = Vec3::new(viewport_width, 0.0, 0.0);
+        let vertical = Vec3::new(0.0, viewport_height, 0.0);
+        let lower_left_corner =
+            position - horizontal / 2.0 - vertical / 2.0 - Vec3(0.0, 0.0, focal_length);
+
+        Camera {
+            position,
+            aspect_ratio,
+            canvas_width,
+            canvas_height,
+            viewport_width,
+            viewport_height,
+            horizontal,
+            vertical,
+            lower_left_corner,
+        }
+    }
+
+    fn ray_to_coordinate(&self, x: u32, y: u32) -> Ray {
+        let u = ratio(x, self.canvas_width);
+        let v = ratio(y, self.canvas_height);
+        let ray = Ray::new(
+            self.position,
+            self.lower_left_corner + u * self.horizontal + v * self.vertical - self.position,
+        );
+        return ray;
+    }
+}
+
 struct Canvas {
     data: Vec<u32>,
     width: u32,
@@ -228,17 +279,12 @@ impl Program {
             self.canvas = Canvas::new(self.canvas.width, self.canvas.height);
         }
         let start = Instant::now();
-        // camera
-        let viewport_height = 2.0;
-        let aspect_ratio = self.canvas.width as f64 / self.canvas.height as f64;
-        let viewport_width = aspect_ratio * viewport_height;
-        let focal_length = 1.0;
 
-        let origin = Point3::new(0.0, 0.0, 0.0);
-        let horizontal = Vec3::new(viewport_width, 0.0, 0.0);
-        let vertical = Vec3::new(0.0, viewport_height, 0.0);
-        let lower_left_corner =
-            origin - horizontal / 2.0 - vertical / 2.0 - Vec3(0.0, 0.0, focal_length);
+        let camera = Camera::new(
+            Point3::new(0.0, 0.0, 0.0),
+            self.canvas.width,
+            self.canvas.height,
+        );
 
         match state.use_threads {
             true => {
@@ -249,12 +295,7 @@ impl Program {
                     .for_each(|(row_number, row)| {
                         for x in 0..self.canvas.width {
                             let y = self.canvas.height - row_number as u32 - 1;
-                            let u = ratio(x, self.canvas.width);
-                            let v = ratio(y, self.canvas.height);
-                            let ray = Ray::new(
-                                origin,
-                                lower_left_corner + u * horizontal + v * vertical - origin,
-                            );
+                            let ray = camera.ray_to_coordinate(x, y);
                             let color = ray_color(ray);
                             row[x as usize] = color_to_u32(&color);
                             // assign_color(&mut self.canvas, x, y, &color);
@@ -264,12 +305,7 @@ impl Program {
             false => {
                 for y in 0..self.canvas.height {
                     for x in 0..self.canvas.width {
-                        let u = ratio(x, self.canvas.width);
-                        let v = ratio(y, self.canvas.height);
-                        let ray = Ray::new(
-                            origin,
-                            lower_left_corner + u * horizontal + v * vertical - origin,
-                        );
+                        let ray = camera.ray_to_coordinate(x, y);
                         let color = ray_color(ray);
                         assign_color(&mut self.canvas, x, y, &color);
                     }
