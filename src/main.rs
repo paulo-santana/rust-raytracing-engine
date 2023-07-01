@@ -148,11 +148,16 @@ fn hit_sphere(center: &Point3, radius: f64, ray: &Ray) -> f64 {
 #[inline]
 fn ray_color(ray: Ray) -> Color {
     let t = hit_sphere(&Point3(0.0, 0.0, -1.0), 0.5, &ray);
-    if t > 0.0 {
-        let normal = Vec3::unit_vector(&(ray.at(t) - Vec3(0.0, 0.0, -1.0)));
-        return normal * 0.5 + 0.5;
+    if t >= 0.0 {
+        let mut color = Color::new(1.0, 0.0, 1.0);
+        let mut normal = Vec3::unit_vector(&(ray.at(t) - Vec3(0.0, 0.0, -1.0)));
+        let light_direction = Vec3::unit_vector(&Vec3::new(-1.0, -1.0, -1.0));
+        let d = f64::max(normal.dot(&-light_direction), 0.0);
+        normal = normal * 0.5 + 0.5;
+        color *= d;
+        return color;
     }
-    // return Color::black();
+    return Color::black();
     let unit_direction = Vec3::unit_vector(&ray.direction);
     let t = 0.5 * (unit_direction.y() + 1.0);
 

@@ -1,15 +1,33 @@
 use glutin::{event_loop::EventLoop, GlRequest};
 use imgui::ConfigFlags;
 use imgui_winit_support::WinitPlatform;
+use winit::dpi::Position;
 
 pub type Window = glutin::WindowedContext<glutin::PossiblyCurrent>;
 
 pub fn create_window(title: &str, gl_request: GlRequest) -> (EventLoop<()>, Window) {
     let event_loop = glutin::event_loop::EventLoop::new();
+
+    let monitor = event_loop
+        .available_monitors()
+        .reduce(|best, current| {
+            if current.refresh_rate_millihertz() > best.refresh_rate_millihertz() {
+                current
+            } else {
+                best
+            }
+        })
+        .expect("Carai, tem monitor não?");
+    let window_width = 1024;
+    let window_height = 768;
+
     let window = glutin::window::WindowBuilder::new()
         .with_title(title)
-        .with_maximized(true);
-    // .with_inner_size(glutin::dpi::LogicalSize::new(1024, 768));
+        .with_position(Position::Physical(winit::dpi::PhysicalPosition {
+            x: ((monitor.size().width - window_width) / 2) as i32,
+            y: ((monitor.size().height - window_height) / 2) as i32,
+        }))
+        .with_inner_size(glutin::dpi::LogicalSize::new(window_width, window_height));
     let window = glutin::ContextBuilder::new()
         .with_gl(gl_request)
         // .with_vsync(true)
