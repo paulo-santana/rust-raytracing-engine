@@ -35,7 +35,16 @@ rayon = "1.7.0"
 # feature is supported before attempting to use it. Only opt-out of any of these
 # if you are certain you will only target platforms that lack the corresponding
 # feature.
-default = ["gl_extensions_support", "debug_message_insert_support", "bind_vertex_array_support", "vertex_offset_support", "clip_origin_support", "bind_sampler_support", "polygon_mode_support", "primitive_restart_support"]
+default = [
+  "gl_extensions_support",
+  "debug_message_insert_support",
+  "bind_vertex_array_support",
+  "vertex_offset_support",
+  "clip_origin_support",
+  "bind_sampler_support",
+  "polygon_mode_support",
+  "primitive_restart_support",
+]
 # Enable checking for OpenGL extensions
 gl_extensions_support = []
 # Support for `gl.debug_message_insert`
@@ -52,3 +61,7 @@ bind_sampler_support = []
 polygon_mode_support = []
 # Support for `GL_PRIMITIVE_RESTART`
 primitive_restart_support = []
+
+# Custom features
+# use_simd = ["portable_simd"]
+portable_simd = []
