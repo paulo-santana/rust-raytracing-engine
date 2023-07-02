@@ -1,4 +1,5 @@
 use rayon::prelude::*;
+use raytracing::renderer::Canvas;
 use std::error::Error;
 use std::io::Read;
 use std::{fs::File, io::Write, time::Instant};
@@ -45,7 +46,7 @@ impl Camera {
         let horizontal = Vec3::new(viewport_width, 0.0, 0.0);
         let vertical = Vec3::new(0.0, viewport_height, 0.0);
         let lower_left_corner =
-            position - horizontal / 2.0 - vertical / 2.0 - Vec3([0.0, 0.0, focal_length, 0.0]);
+            position - horizontal / 2.0 - vertical / 2.0 - Vec3::new(0.0, 0.0, focal_length);
 
         Camera {
             position,
@@ -68,22 +69,6 @@ impl Camera {
             self.lower_left_corner + u * self.horizontal + v * self.vertical - self.position,
         );
         return ray;
-    }
-}
-
-struct Canvas {
-    data: Vec<u32>,
-    width: u32,
-    height: u32,
-}
-
-impl Canvas {
-    fn new(width: u32, height: u32) -> Canvas {
-        Canvas {
-            data: vec![0; (width * height) as usize],
-            width,
-            height,
-        }
     }
 }
 
@@ -147,26 +132,21 @@ fn hit_sphere(center: &Point3, radius: f64, ray: &Ray) -> f64 {
 
 #[inline]
 fn ray_color(ray: Ray) -> Color {
-    let t = hit_sphere(&Point3([0.0, 0.0, -1.0, 0.0]), 0.5, &ray);
+    let t = hit_sphere(&Point3::new(0.0, 0.0, -1.0), 0.5, &ray);
     if t >= 0.0 {
         let mut color = Color::new(1.0, 0.0, 1.0);
-        let mut normal = Vec3::unit_vector(&(ray.at(t) - Vec3([0.0, 0.0, -1.0, 0.0])));
+        let mut normal = Vec3::unit_vector(&(ray.at(t) - Vec3::new(0.0, 0.0, -1.0)));
         let light_direction = Vec3::unit_vector(&Vec3::new(-1.0, -1.0, -1.0));
         let d = f64::max(normal.dot(&-light_direction), 0.0);
-        normal = normal * 0.5 + 0.5;
+
         color *= d;
         return color;
     }
-    return Color::black();
+    // return Color::black();
     let unit_direction = Vec3::unit_vector(&ray.direction);
     let t = 0.5 * (unit_direction.y() + 1.0);
 
     return (1.0 - t) * Color::new(1.0, 1.0, 1.0) + t * Color::new(0.5, 0.7, 1.0);
-}
-
-fn assign_color(canvas: &mut Canvas, x: u32, y: u32, color: &Color) {
-    canvas.data[((canvas.height - 1 - y) * canvas.width + x) as usize] = color_to_u32(color);
-    // canvas.data[(canvas.height - 1 - y) * canvas.width + x] = rand::thread_rng().gen();
 }
 
 fn save_state(state: &State) -> Result<(), Box<dyn Error>> {
@@ -280,10 +260,10 @@ impl Program {
     }
 
     fn render(&mut self, state: &mut State) {
+        let start = Instant::now();
         if self.canvas.data.len() != (self.canvas.width * self.canvas.height) as usize {
             self.canvas = Canvas::new(self.canvas.width, self.canvas.height);
         }
-        let start = Instant::now();
 
         let camera = Camera::new(
             Point3::new(0.0, 0.0, 0.0),
@@ -297,10 +277,10 @@ impl Program {
                     .data
                     .par_chunks_mut(self.canvas.width as usize)
                     .enumerate()
-                    .for_each(|(row_number, row)| {
+                    .for_each(|(y, row)| {
                         for x in 0..self.canvas.width {
-                            let y = self.canvas.height - row_number as u32 - 1;
-                            let ray = camera.ray_to_coordinate(x, y);
+                            // let y = self.canvas.height - row_number as u32 - 1;
+                            let ray = camera.ray_to_coordinate(x, y as u32);
                             let color = ray_color(ray);
                             row[x as usize] = color_to_u32(&color);
                             // assign_color(&mut self.canvas, x, y, &color);
@@ -312,7 +292,8 @@ impl Program {
                     for x in 0..self.canvas.width {
                         let ray = camera.ray_to_coordinate(x, y);
                         let color = ray_color(ray);
-                        assign_color(&mut self.canvas, x, y, &color);
+                        self.canvas.data[(y * self.canvas.width + x) as usize] =
+                            color_to_u32(&color);
                     }
                 }
             }
@@ -425,7 +406,10 @@ impl Program {
                 self.viewport_width = width as u32;
                 self.viewport_height = height as u32;
                 if let Some(texture) = self.generated_texture {
-                    imgui::Image::new(texture, [width, height]).build(ui);
+                    imgui::Image::new(texture, [width, height])
+                        .uv0([0.0, 1.0])
+                        .uv1([1.0, 0.0])
+                        .build(ui);
                 }
             });
         token.pop();

@@ -2,3 +2,5 @@
 *.ppm
 imgui.ini
 state.yaml
+callgrind.out.*
+oprofile_data/

@@ -4,20 +4,19 @@ pub use crate::rt::vec3::Vec3 as Color;
 
 impl Color {
     pub fn black() -> Color {
-        Color([0.0, 0.0, 0.0, 0.0])
+        Color::new(0.0, 0.0, 0.0)
     }
 
     pub fn white() -> Color {
-        Color([1.0, 1.0, 1.0, 1.0])
+        Color::new(1.0, 1.0, 1.0)
     }
 
     pub fn from_rgba(rgba: u32) -> Color {
-        Color([
+        Color::new(
             (rgba & 0xff) as f64 / 255.999,
             (rgba >> 8 & 0xff) as f64 / 255.999,
             (rgba >> 16 & 0xff) as f64 / 255.999,
-            0.0,
-        ])
+        )
     }
 }
 
@@ -42,7 +41,7 @@ use std::simd::f64x4;
 pub fn color_to_u32(pixel_color: &Color) -> u32 {
     let colors = pixel_color.as_simd();
     let limit = f64x4::splat(255.999);
-    let result = colors * limit;
+    let result = (colors * limit).to_array();
     let r = (result[0]) as u32;
     let g = (result[1]) as u32;
     let b = (result[2]) as u32;

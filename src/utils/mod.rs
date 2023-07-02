@@ -18,8 +18,8 @@ pub fn create_window(title: &str, gl_request: GlRequest) -> (EventLoop<()>, Wind
             }
         })
         .expect("Carai, tem monitor não?");
-    let window_width = 1024;
-    let window_height = 768;
+    let window_width = 1400;
+    let window_height = 900;
 
     let window = glutin::window::WindowBuilder::new()
         .with_title(title)
