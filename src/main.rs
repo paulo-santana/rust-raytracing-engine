@@ -140,6 +140,21 @@ fn ray_color(ray: Ray) -> Color {
     (1.0 - t) * Color::new(1.0, 1.0, 1.0) + t * Color::new(0.5, 0.7, 1.0)
 }
 
+fn per_pixel(x: f64, y: f64) -> u32 {
+    let ray_origin = Vec3::new(0.0, 0.0, 2.0);
+    let ray_direction = Vec3::unit_vector(&Vec3::new(x, y, -1.0));
+    let radius = 0.5;
+    let a = ray_direction.dot(&ray_direction);
+    let b = 2.0 * ray_origin.dot(&ray_direction);
+    let c = ray_origin.dot(&ray_origin) - radius * radius;
+
+    let discriminant = b * b - 4.0 * a * c;
+    if discriminant >= 0.0 {
+        return 0xffff00ff;
+    }
+    return 0xff000000;
+}
+
 fn save_state(state: &State) -> Result<(), Box<dyn Error>> {
     let state = serde_yaml::to_string(state)?;
     let mut save_file = File::create("state.yaml")?;
@@ -281,10 +296,9 @@ impl Program {
             false => {
                 for y in 0..self.canvas.height {
                     for x in 0..self.canvas.width {
-                        let ray = camera.ray_to_coordinate(x, y);
-                        let color = ray_color(ray);
-                        self.canvas.data[(y * self.canvas.width + x) as usize] =
-                            color_to_u32(&color);
+                        let cy = y as f64 / self.canvas.height as f64 * 2.0 - 1.0;
+                        let cx = x as f64 / self.canvas.width as f64 * 2.0 - 1.0;
+                        self.canvas.data[(y * self.canvas.width + x) as usize] = per_pixel(cx, cy);
                     }
                 }
             }
