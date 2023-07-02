@@ -21,16 +21,10 @@ use raytracing::rt::{
 };
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_WIDTH: u32 = 400;
-const DEFAULT_HEIGHT: u32 = 200;
-
 struct Camera {
     position: Point3,
-    aspect_ratio: f64,
     canvas_width: u32,
     canvas_height: u32,
-    viewport_width: f64,
-    viewport_height: f64,
     horizontal: Vec3,
     vertical: Vec3,
     lower_left_corner: Vec3,
@@ -50,11 +44,8 @@ impl Camera {
 
         Camera {
             position,
-            aspect_ratio,
             canvas_width,
             canvas_height,
-            viewport_width,
-            viewport_height,
             horizontal,
             vertical,
             lower_left_corner,
