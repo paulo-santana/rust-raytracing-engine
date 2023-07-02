@@ -141,12 +141,17 @@ fn ray_color(ray: Ray) -> Color {
 }
 
 fn per_pixel(x: f64, y: f64) -> u32 {
+    let sphere_origin = Vec3::new(1.0, 0.0, 0.0);
+    let radius = 0.5;
+
     let ray_origin = Vec3::new(0.0, 0.0, 2.0);
     let ray_direction = Vec3::unit_vector(&Vec3::new(x, y, -1.0));
-    let radius = 0.5;
+
+    let oc = ray_origin - sphere_origin;
+
     let a = ray_direction.dot(&ray_direction);
-    let b = 2.0 * ray_origin.dot(&ray_direction);
-    let c = ray_origin.dot(&ray_origin) - radius * radius;
+    let b = 2.0 * oc.dot(&ray_direction);
+    let c = oc.dot(&oc) - radius * radius;
 
     let discriminant = b * b - 4.0 * a * c;
     if discriminant >= 0.0 {
