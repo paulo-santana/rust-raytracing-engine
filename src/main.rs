@@ -64,11 +64,11 @@ impl Camera {
     fn ray_to_coordinate(&self, x: u32, y: u32) -> Ray {
         let u = ratio(x, self.canvas_width);
         let v = ratio(y, self.canvas_height);
-        let ray = Ray::new(
+
+        Ray::new(
             self.position,
             self.lower_left_corner + u * self.horizontal + v * self.vertical - self.position,
-        );
-        return ray;
+        )
     }
 }
 
@@ -98,7 +98,7 @@ impl Default for State {
 }
 
 fn save_ppm<T: Write>(out: &mut T, canvas: &Canvas) {
-    out.write(format!("P3\n{} {}\n255\n", canvas.width, canvas.height).as_bytes())
+    out.write_all(format!("P3\n{} {}\n255\n", canvas.width, canvas.height).as_bytes())
         .expect("Failed writing the ppm header");
     for y in 0..canvas.height {
         for x in 0..canvas.width {
@@ -124,9 +124,9 @@ fn hit_sphere(center: &Point3, radius: f64, ray: &Ray) -> f64 {
 
     let discriminant = half_b * half_b - a * c;
     if discriminant < 0.0 {
-        return -1.0;
+        -1.0
     } else {
-        return (-half_b - discriminant.sqrt()) / a;
+        (-half_b - discriminant.sqrt()) / a
     }
 }
 
@@ -135,7 +135,7 @@ fn ray_color(ray: Ray) -> Color {
     let t = hit_sphere(&Point3::new(0.0, 0.0, -1.0), 0.5, &ray);
     if t >= 0.0 {
         let mut color = Color::new(1.0, 0.0, 1.0);
-        let mut normal = Vec3::unit_vector(&(ray.at(t) - Vec3::new(0.0, 0.0, -1.0)));
+        let normal = Vec3::unit_vector(&(ray.at(t) - Vec3::new(0.0, 0.0, -1.0)));
         let light_direction = Vec3::unit_vector(&Vec3::new(-1.0, -1.0, -1.0));
         let d = f64::max(normal.dot(&-light_direction), 0.0);
 
@@ -146,14 +146,14 @@ fn ray_color(ray: Ray) -> Color {
     let unit_direction = Vec3::unit_vector(&ray.direction);
     let t = 0.5 * (unit_direction.y() + 1.0);
 
-    return (1.0 - t) * Color::new(1.0, 1.0, 1.0) + t * Color::new(0.5, 0.7, 1.0);
+    (1.0 - t) * Color::new(1.0, 1.0, 1.0) + t * Color::new(0.5, 0.7, 1.0)
 }
 
 fn save_state(state: &State) -> Result<(), Box<dyn Error>> {
     let state = serde_yaml::to_string(state)?;
     let mut save_file = File::create("state.yaml")?;
     save_file.write_all(state.as_bytes())?;
-    return Ok(());
+    Ok(())
 }
 
 fn load_state() -> Result<State, Box<dyn Error>> {
@@ -161,7 +161,7 @@ fn load_state() -> Result<State, Box<dyn Error>> {
     let mut content = String::default();
     state_file.read_to_string(&mut content)?;
     let state: State = serde_yaml::from_str(&content)?;
-    return Ok(state);
+    Ok(state)
 }
 
 fn main() {
@@ -343,7 +343,7 @@ impl Program {
                 Some(data),
             )
         }
-        return gl_texture;
+        gl_texture
     }
 
     fn show(

@@ -14,7 +14,7 @@ pub use Vec3 as Point3;
 
 impl Vec3 {
     pub fn unit_vector(v: &Vec3) -> Vec3 {
-        v.clone() / v.length()
+        *v / v.length()
     }
     #[cfg(feature = "portable_simd")]
     pub fn new(r: f64, g: f64, b: f64) -> Vec3 {
