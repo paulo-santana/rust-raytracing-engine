@@ -1,3 +1,4 @@
+extern crate nalgebra_glm as glm;
 use nalgebra::{Vector3, Vector4};
 use rayon::prelude::*;
 use raytracing::renderer::Canvas;
@@ -68,6 +69,7 @@ struct State {
     use_threads: bool,
     canvas_width: u32,
     canvas_height: u32,
+    sphere_color: [f32; 4],
     #[serde(skip_serializing, skip_deserializing)]
     last_render_time: time::Duration,
     #[serde(skip_serializing, skip_deserializing)]
@@ -81,6 +83,7 @@ impl Default for State {
             use_threads: false,
             canvas_width: 400,
             canvas_height: 270,
+            sphere_color: [1.0; 4],
             last_render_time: time::Duration::ZERO,
             error_msg: String::default(),
         }
@@ -137,11 +140,11 @@ fn ray_color(ray: Ray) -> Vector4<f64> {
 }
 
 #[inline(never)]
-fn per_pixel(x: f64, y: f64) -> Vector4<f64> {
-    let sphere_origin = Vector3::new(1.0, 0.0, 0.0);
+fn per_pixel(x: f64, y: f64, sphere_color: &Vector4<f64>) -> Vector4<f64> {
+    let sphere_origin = Vector3::new(0.0, 0.0, 0.0);
     let radius = 0.5;
 
-    let ray_origin = Vector3::new(0.0, 0.0, 2.0);
+    let ray_origin = Vector3::new(0.0, 0.0, 1.0);
     let ray_direction = Vector3::normalize(&Vector3::new(x, y, -1.0));
 
     let oc = ray_origin - sphere_origin;
@@ -151,10 +154,21 @@ fn per_pixel(x: f64, y: f64) -> Vector4<f64> {
     let c = oc.dot(&oc) - radius * radius;
 
     let discriminant = b * b - 4.0 * a * c;
-    if discriminant >= 0.0 {
-        return Vector4::new(1.0, 0.0, 0.0, 1.0);
+    if discriminant < 0.0 {
+        return Vector4::new(0.0, 0.0, 0.0, 1.0);
     }
-    Vector4::new(0.0, 0.0, 0.0, 1.0)
+
+    // (-b +- sqrt(discriminant)) / 2a
+    let closest_t = (-b - discriminant.sqrt()) / 2.0 * a;
+
+    let hit_point = ray_origin + ray_direction * closest_t;
+    let normal = hit_point.normalize();
+
+    let light_direction = glm::vec3(-1.0, -1.0, -1.0).normalize();
+
+    let d = glm::max2_scalar(normal.dot(&-light_direction), 0.0);
+
+    sphere_color * d
 }
 
 fn save_state(state: &State) -> Result<(), Box<dyn Error>> {
@@ -296,13 +310,19 @@ impl Program {
                     });
             }
             false => {
+                let half_width = self.canvas.width as f64 / 2.0;
+                let half_heigth = self.canvas.height as f64 / 2.0;
                 for y in 0..self.canvas.height {
-                    let cy = y as f64 / self.canvas.height as f64 * 2.0 - 1.0;
+                    let cy = y as f64 / half_heigth - 1.0;
                     let offset = y * self.canvas.width;
                     for x in 0..self.canvas.width {
-                        let cx = x as f64 / self.canvas.width as f64 * 2.0 - 1.0;
-                        let color = per_pixel(cx, cy);
-                        let color = nalgebra_glm::clamp(&color, 0.0, 1.0);
+                        let cx = x as f64 / half_width - 1.0;
+                        let color = per_pixel(
+                            cx,
+                            cy,
+                            &nalgebra::convert(Vector4::from_row_slice(&state.sphere_color)),
+                        );
+                        let color = glm::clamp(&color, 0.0, 1.0);
                         self.canvas.data[(offset + x) as usize] = color_to_u32(&color);
                     }
                 }
@@ -407,6 +427,10 @@ impl Program {
                 let texture = Self::new_texture(&self.canvas, state, gl);
                 self.prepare_texture(texture, textures, gl);
             });
+
+        ui.window("Scene").build(|| {
+            ui.color_edit4("Sphere color", &mut state.sphere_color);
+        });
 
         let token = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0]));
         ui.window("Viewport")
