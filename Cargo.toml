@@ -32,6 +32,7 @@ rand = "0.8.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 rayon = "1.7.0"
+nalgebra = "0.32.2"
 
 [features]
 # Features here are used to opt-out of compiling code that depends on certain
@@ -68,4 +69,3 @@ primitive_restart_support = []
 
 # Custom features
 # use_simd = ["portable_simd"]
-portable_simd = []

@@ -1,3 +1,4 @@
+use nalgebra::{Vector3, Vector4};
 use rayon::prelude::*;
 use raytracing::renderer::Canvas;
 use std::error::Error;
@@ -14,33 +15,31 @@ mod utils;
 use imgui::*;
 
 use raytracing::rt::{
-    color::{color_to_u32, write_color, Color},
+    color::{color_to_u32, write_color},
     ray::Ray,
-    vec3::Point3,
-    vec3::Vec3,
 };
 use serde::{Deserialize, Serialize};
 
 struct Camera {
-    position: Point3,
+    position: Vector3<f64>,
     canvas_width: u32,
     canvas_height: u32,
-    horizontal: Vec3,
-    vertical: Vec3,
-    lower_left_corner: Vec3,
+    horizontal: Vector3<f64>,
+    vertical: Vector3<f64>,
+    lower_left_corner: Vector3<f64>,
 }
 
 impl Camera {
-    fn new(position: Point3, canvas_width: u32, canvas_height: u32) -> Camera {
+    fn new(position: Vector3<f64>, canvas_width: u32, canvas_height: u32) -> Camera {
         let viewport_height = 2.0;
         let aspect_ratio = canvas_width as f64 / canvas_height as f64;
         let viewport_width = aspect_ratio * viewport_height;
         let focal_length = 1.0;
 
-        let horizontal = Vec3::new(viewport_width, 0.0, 0.0);
-        let vertical = Vec3::new(0.0, viewport_height, 0.0);
+        let horizontal = Vector3::new(viewport_width, 0.0, 0.0);
+        let vertical = Vector3::new(0.0, viewport_height, 0.0);
         let lower_left_corner =
-            position - horizontal / 2.0 - vertical / 2.0 - Vec3::new(0.0, 0.0, focal_length);
+            position - horizontal / 2.0 - vertical / 2.0 - Vector3::new(0.0, 0.0, focal_length);
 
         Camera {
             position,
@@ -93,10 +92,7 @@ fn save_ppm<T: Write>(out: &mut T, canvas: &Canvas) {
         .expect("Failed writing the ppm header");
     for y in 0..canvas.height {
         for x in 0..canvas.width {
-            write_color(
-                out,
-                &Color::from_rgba(canvas.data[(y * canvas.width + x) as usize]),
-            );
+            write_color(out, canvas.data[(y * canvas.width + x) as usize]);
         }
     }
 }
@@ -107,11 +103,11 @@ fn ratio(a: u32, b: u32) -> f64 {
 }
 
 #[inline]
-fn hit_sphere(center: &Point3, radius: f64, ray: &Ray) -> f64 {
+fn hit_sphere(center: &Vector3<f64>, radius: f64, ray: &Ray) -> f64 {
     let oc = ray.origin - *center;
-    let a = ray.direction.lenght_squared();
+    let a = ray.direction.dot(&ray.direction);
     let half_b = oc.dot(&ray.direction);
-    let c = oc.lenght_squared() - radius * radius;
+    let c = oc.dot(&oc) - radius * radius;
 
     let discriminant = half_b * half_b - a * c;
     if discriminant < 0.0 {
@@ -122,30 +118,31 @@ fn hit_sphere(center: &Point3, radius: f64, ray: &Ray) -> f64 {
 }
 
 #[inline]
-fn ray_color(ray: Ray) -> Color {
-    let t = hit_sphere(&Point3::new(0.0, 0.0, -1.0), 0.5, &ray);
+fn ray_color(ray: Ray) -> Vector4<f64> {
+    let t = hit_sphere(&Vector3::new(0.0, 0.0, -1.0), 0.5, &ray);
     if t >= 0.0 {
-        let mut color = Color::new(1.0, 0.0, 1.0);
-        let normal = Vec3::unit_vector(&(ray.at(t) - Vec3::new(0.0, 0.0, -1.0)));
-        let light_direction = Vec3::unit_vector(&Vec3::new(-1.0, -1.0, -1.0));
+        let mut color = Vector4::new(1.0, 0.0, 1.0, 1.0);
+        let normal = Vector3::normalize(&(ray.at(t) - Vector3::new(0.0, 0.0, -1.0)));
+        let light_direction = Vector3::normalize(&Vector3::new(-1.0, -1.0, -1.0));
         let d = f64::max(normal.dot(&-light_direction), 0.0);
 
         color *= d;
         return color;
     }
     // return Color::black();
-    let unit_direction = Vec3::unit_vector(&ray.direction);
-    let t = 0.5 * (unit_direction.y() + 1.0);
+    let unit_direction = Vector3::normalize(&ray.direction);
+    let t = 0.5 * (unit_direction.y + 1.0);
 
-    (1.0 - t) * Color::new(1.0, 1.0, 1.0) + t * Color::new(0.5, 0.7, 1.0)
+    (1.0 - t) * Vector4::new(1.0, 1.0, 1.0, 1.0) + t * Vector4::new(0.5, 0.7, 1.0, 1.0)
 }
 
+#[inline(never)]
 fn per_pixel(x: f64, y: f64) -> u32 {
-    let sphere_origin = Vec3::new(1.0, 0.0, 0.0);
+    let sphere_origin = Vector3::new(1.0, 0.0, 0.0);
     let radius = 0.5;
 
-    let ray_origin = Vec3::new(0.0, 0.0, 2.0);
-    let ray_direction = Vec3::unit_vector(&Vec3::new(x, y, -1.0));
+    let ray_origin = Vector3::new(0.0, 0.0, 2.0);
+    let ray_direction = Vector3::normalize(&Vector3::new(x, y, -1.0));
 
     let oc = ray_origin - sphere_origin;
 
@@ -157,7 +154,7 @@ fn per_pixel(x: f64, y: f64) -> u32 {
     if discriminant >= 0.0 {
         return 0xffff00ff;
     }
-    return 0xff000000;
+    0xff000000
 }
 
 fn save_state(state: &State) -> Result<(), Box<dyn Error>> {
@@ -277,7 +274,7 @@ impl Program {
         }
 
         let camera = Camera::new(
-            Point3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.0, 0.0, 0.0),
             self.canvas.width,
             self.canvas.height,
         );
@@ -300,10 +297,11 @@ impl Program {
             }
             false => {
                 for y in 0..self.canvas.height {
+                    let cy = y as f64 / self.canvas.height as f64 * 2.0 - 1.0;
+                    let offset = y * self.canvas.width;
                     for x in 0..self.canvas.width {
-                        let cy = y as f64 / self.canvas.height as f64 * 2.0 - 1.0;
                         let cx = x as f64 / self.canvas.width as f64 * 2.0 - 1.0;
-                        self.canvas.data[(y * self.canvas.width + x) as usize] = per_pixel(cx, cy);
+                        self.canvas.data[(offset + x) as usize] = per_pixel(cx, cy);
                     }
                 }
             }
