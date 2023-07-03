@@ -46,9 +46,9 @@ impl RaytracingRenderer {
             }
             false => {
                 let half_width = self.canvas.width as f64 / 2.0;
-                let half_heigth = self.canvas.height as f64 / 2.0;
+                let half_height = self.canvas.height as f64 / 2.0;
                 for y in 0..self.canvas.height {
-                    let cy = y as f64 / half_heigth - 1.0;
+                    let cy = y as f64 / half_height - 1.0;
                     let offset = y * self.canvas.width;
                     for x in 0..self.canvas.width {
                         let cx = x as f64 / half_width - 1.0;
