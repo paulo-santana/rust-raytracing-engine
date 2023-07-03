@@ -16,9 +16,10 @@ pub fn write_color<T: Write>(out: &mut T, pixel_color: u32) {
 
 #[cfg(not(feature = "portable_simd"))]
 pub fn color_to_u32(pixel_color: &Vector4<f64>) -> u32 {
-    let r = (pixel_color[1] * 255.999) as u32;
-    let g = (pixel_color[1] * 255.999) as u32;
-    let b = (pixel_color[2] * 255.999) as u32;
+    let r = (pixel_color[0] * 255.0) as u32;
+    let g = (pixel_color[1] * 255.0) as u32;
+    let b = (pixel_color[2] * 255.0) as u32;
+    let a = (pixel_color[3] * 255.0) as u32;
 
-    0xff << 24 | b << 16 | g << 8 | r
+    a << 24 | b << 16 | g << 8 | r
 }

@@ -137,7 +137,7 @@ fn ray_color(ray: Ray) -> Vector4<f64> {
 }
 
 #[inline(never)]
-fn per_pixel(x: f64, y: f64) -> u32 {
+fn per_pixel(x: f64, y: f64) -> Vector4<f64> {
     let sphere_origin = Vector3::new(1.0, 0.0, 0.0);
     let radius = 0.5;
 
@@ -152,9 +152,9 @@ fn per_pixel(x: f64, y: f64) -> u32 {
 
     let discriminant = b * b - 4.0 * a * c;
     if discriminant >= 0.0 {
-        return 0xffff00ff;
+        return Vector4::new(1.0, 0.0, 0.0, 1.0);
     }
-    0xff000000
+    Vector4::new(0.0, 0.0, 0.0, 1.0)
 }
 
 fn save_state(state: &State) -> Result<(), Box<dyn Error>> {
@@ -301,7 +301,9 @@ impl Program {
                     let offset = y * self.canvas.width;
                     for x in 0..self.canvas.width {
                         let cx = x as f64 / self.canvas.width as f64 * 2.0 - 1.0;
-                        self.canvas.data[(offset + x) as usize] = per_pixel(cx, cy);
+                        let color = per_pixel(cx, cy);
+                        let color = nalgebra_glm::clamp(&color, 0.0, 1.0);
+                        self.canvas.data[(offset + x) as usize] = color_to_u32(&color);
                     }
                 }
             }
