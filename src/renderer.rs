@@ -23,7 +23,7 @@ impl RaytracingRenderer {
         self.canvas.resize(viewport_width, viewport_height);
     }
 
-    pub fn render(&mut self, state: &mut State, camera: &Camera) {
+    pub fn render(&mut self, state: &State, camera: &Camera) -> time::Duration {
         let start = Instant::now();
 
         let render_row = |(y, row): (usize, &mut [u32])| {
@@ -48,7 +48,7 @@ impl RaytracingRenderer {
             false => data.chunks_mut(width).enumerate().for_each(render_row),
         };
 
-        state.last_render_time = start.elapsed();
+        start.elapsed()
     }
 }
 

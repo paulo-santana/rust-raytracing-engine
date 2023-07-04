@@ -124,7 +124,7 @@ fn main() {
                     .renderer
                     .on_resize(state.canvas_width, state.canvas_height);
                 camera.on_resize(state.canvas_width, state.canvas_height);
-                textures_ui.renderer.render(&mut state, &camera);
+                state.last_render_time = textures_ui.renderer.render(&state, &camera);
 
                 let texture = Program::new_texture(&textures_ui.renderer.canvas, &state, &gl);
                 textures_ui.prepare_texture(texture, &mut textures, &gl);
