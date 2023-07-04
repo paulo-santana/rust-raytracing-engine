@@ -1,7 +1,7 @@
 use rayon::prelude::*;
 extern crate nalgebra_glm as glm;
 use core::time;
-use std::{os::linux::raw::stat, time::Instant};
+use std::time::Instant;
 
 use nalgebra::{Vector3, Vector4};
 use serde::{Deserialize, Serialize};
@@ -114,40 +114,6 @@ impl Default for State {
             error_msg: String::default(),
         }
     }
-}
-
-#[inline]
-fn hit_sphere(center: &Vector3<f64>, radius: f64, ray: &Ray) -> f64 {
-    let oc = ray.origin - *center;
-    let a = ray.direction.dot(&ray.direction);
-    let half_b = oc.dot(&ray.direction);
-    let c = oc.dot(&oc) - radius * radius;
-
-    let discriminant = half_b * half_b - a * c;
-    if discriminant < 0.0 {
-        -1.0
-    } else {
-        (-half_b - discriminant.sqrt()) / a
-    }
-}
-
-#[inline]
-fn ray_color(ray: &Ray) -> Vector4<f64> {
-    let t = hit_sphere(&Vector3::new(0.0, 0.0, -1.0), 0.5, ray);
-    if t >= 0.0 {
-        let mut color = Vector4::new(1.0, 0.0, 1.0, 1.0);
-        let normal = Vector3::normalize(&(ray.at(t) - Vector3::new(0.0, 0.0, -1.0)));
-        let light_direction = Vector3::normalize(&Vector3::new(-1.0, -1.0, -1.0));
-        let d = f64::max(normal.dot(&-light_direction), 0.0);
-
-        color *= d;
-        return color;
-    }
-    // return Color::black();
-    let unit_direction = Vector3::normalize(&ray.direction);
-    let t = 0.5 * (unit_direction.y + 1.0);
-
-    (1.0 - t) * Vector4::new(1.0, 1.0, 1.0, 1.0) + t * Vector4::new(0.5, 0.7, 1.0, 1.0)
 }
 
 #[inline(never)]
