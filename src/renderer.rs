@@ -1,7 +1,7 @@
 use rayon::prelude::*;
 extern crate nalgebra_glm as glm;
 use core::time;
-use std::time::Instant;
+use std::{os::linux::raw::stat, time::Instant};
 
 use nalgebra::{Vector3, Vector4};
 use serde::{Deserialize, Serialize};
@@ -33,26 +33,27 @@ impl RaytracingRenderer {
                     .par_chunks_mut(self.canvas.width as usize)
                     .enumerate()
                     .for_each(|(y, row)| {
+                        let mut ray = Ray::new(camera.position, Vector3::default());
+                        let offset = y as u32 * self.canvas.width;
                         for x in 0..self.canvas.width {
-                            // let y = self.canvas.height - row_number as u32 - 1;
-                            let ray = camera.ray_to_coordinate(x, y as u32);
-                            let color = ray_color(ray);
+                            ray.direction = camera.get_ray_directions()[(offset + x) as usize];
+                            let color = trace_ray(
+                                &ray,
+                                &nalgebra::convert(Vector4::from_row_slice(&state.sphere_color)),
+                            );
+                            let color = glm::clamp(&color, 0.0, 1.0);
                             row[x as usize] = color_to_u32(&color);
-                            // assign_color(&mut self.canvas, x, y, &color);
                         }
                     });
             }
             false => {
-                let half_width = self.canvas.width as f64 / 2.0;
-                let half_height = self.canvas.height as f64 / 2.0;
+                let mut ray = Ray::new(camera.position, Vector3::default());
                 for y in 0..self.canvas.height {
-                    let cy = y as f64 / half_height - 1.0;
                     let offset = y * self.canvas.width;
                     for x in 0..self.canvas.width {
-                        let cx = x as f64 / half_width - 1.0;
-                        let color = per_pixel(
-                            cx,
-                            cy,
+                        ray.direction = camera.get_ray_directions()[(offset + x) as usize];
+                        let color = trace_ray(
+                            &ray,
                             &nalgebra::convert(Vector4::from_row_slice(&state.sphere_color)),
                         );
                         let color = glm::clamp(&color, 0.0, 1.0);
@@ -131,8 +132,8 @@ fn hit_sphere(center: &Vector3<f64>, radius: f64, ray: &Ray) -> f64 {
 }
 
 #[inline]
-fn ray_color(ray: Ray) -> Vector4<f64> {
-    let t = hit_sphere(&Vector3::new(0.0, 0.0, -1.0), 0.5, &ray);
+fn ray_color(ray: &Ray) -> Vector4<f64> {
+    let t = hit_sphere(&Vector3::new(0.0, 0.0, -1.0), 0.5, ray);
     if t >= 0.0 {
         let mut color = Vector4::new(1.0, 0.0, 1.0, 1.0);
         let normal = Vector3::normalize(&(ray.at(t) - Vector3::new(0.0, 0.0, -1.0)));
@@ -150,17 +151,14 @@ fn ray_color(ray: Ray) -> Vector4<f64> {
 }
 
 #[inline(never)]
-fn per_pixel(x: f64, y: f64, sphere_color: &Vector4<f64>) -> Vector4<f64> {
+fn trace_ray(ray: &Ray, sphere_color: &Vector4<f64>) -> Vector4<f64> {
     let sphere_origin = Vector3::new(0.0, 0.0, 0.0);
     let radius = 0.5;
 
-    let ray_origin = Vector3::new(0.0, 0.0, 1.0);
-    let ray_direction = Vector3::normalize(&Vector3::new(x, y, -1.0));
+    let oc = ray.origin - sphere_origin;
 
-    let oc = ray_origin - sphere_origin;
-
-    let a = ray_direction.dot(&ray_direction);
-    let b = 2.0 * oc.dot(&ray_direction);
+    let a = ray.direction.dot(&ray.direction);
+    let b = 2.0 * oc.dot(&ray.direction);
     let c = oc.dot(&oc) - radius * radius;
 
     let discriminant = b * b - 4.0 * a * c;
@@ -171,7 +169,7 @@ fn per_pixel(x: f64, y: f64, sphere_color: &Vector4<f64>) -> Vector4<f64> {
     // (-b +- sqrt(discriminant)) / 2a
     let closest_t = (-b - discriminant.sqrt()) / 2.0 * a;
 
-    let hit_point = ray_origin + ray_direction * closest_t;
+    let hit_point = ray.origin + ray.direction * closest_t;
     let normal = hit_point.normalize();
 
     let light_direction = glm::vec3(-1.0, -1.0, -1.0).normalize();

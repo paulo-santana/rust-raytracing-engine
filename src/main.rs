@@ -5,8 +5,10 @@ use raytracing::renderer::{Canvas, RaytracingRenderer, State};
 use std::error::Error;
 use std::io::Read;
 use std::{fs::File, io::Write, time::Instant};
+use winit::dpi::PhysicalPosition;
 use winit::event::ElementState::{Pressed, Released};
 use winit::event::MouseButton::Right;
+use winit::window::CursorGrabMode;
 
 use __core::mem;
 use glow::{HasContext, NativeTexture};
@@ -77,6 +79,7 @@ fn main() {
     let mut textures_ui = Program::new();
 
     let mut last_frame = Instant::now();
+    let mut where_mouse_clicked = PhysicalPosition::new(200, 200);
     event_loop.run(move |event, _, control_flow| {
         // Note we can potentially make the loop more efficient by
         // changing the `Poll` (default) value to `ControlFlow::Wait`
@@ -107,6 +110,13 @@ fn main() {
                     glm::convert(Vector2::from_row_slice(&ui.io().mouse_pos)),
                     ui.io().delta_time as f64,
                 );
+
+                if camera.state.is_active {
+                    window
+                        .window()
+                        .set_cursor_position(where_mouse_clicked)
+                        .expect("Failed to set cursor position");
+                }
 
                 textures_ui.show(ui, &mut state);
 
@@ -144,15 +154,28 @@ fn main() {
             } => camera.handle_input(input),
 
             glutin::event::Event::WindowEvent {
-                event: glutin::event::WindowEvent::MouseInput { state, button, .. },
+                event:
+                    glutin::event::WindowEvent::MouseInput {
+                        state,
+                        button: Right,
+                        ..
+                    },
                 ..
             } => {
-                match (button, state) {
-                    (Right, Pressed) => camera.state.is_active = true,
-                    (Right, Released) => camera.state.is_active = false,
-                    (_, _) => (),
+                let (cursor_mode, is_active) = match state {
+                    Pressed => {
+                        where_mouse_clicked =
+                            PhysicalPosition::from(imgui_context.io_mut().mouse_pos);
+                        (CursorGrabMode::Confined, true)
+                    }
+                    Released => (CursorGrabMode::None, false),
                 };
-                winit_platform.handle_event(imgui_context.io_mut(), window.window(), &event);
+                camera.state.is_active = is_active;
+                window.window().set_cursor_visible(!is_active);
+                window
+                    .window()
+                    .set_cursor_grab(cursor_mode)
+                    .expect("Failed to set the cursor mode to Locked");
             }
             glutin::event::Event::LoopDestroyed => {
                 ig_renderer.destroy(&gl);

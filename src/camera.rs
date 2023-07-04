@@ -18,8 +18,8 @@ pub struct CameraState {
 }
 
 pub struct Camera {
-    position: Vector3<f64>,
-    forward_direction: Vector3<f64>,
+    pub position: Vector3<f64>,
+    pub forward_direction: Vector3<f64>,
     vertical_fov: f64,
     near_clip: f64,
     far_clip: f64,
@@ -95,9 +95,8 @@ impl Camera {
         let curr_position = self.position;
 
         let delta = (mouse_pos - self.last_mouse_pos) * 0.002;
-        self.last_mouse_pos = mouse_pos;
-
         if !self.state.is_active {
+            self.last_mouse_pos = mouse_pos;
             return;
         }
 
@@ -170,8 +169,8 @@ impl Camera {
         }
     }
 
-    pub fn get_ray_directions() -> Vec<Vector3<f64>> {
-        vec![]
+    pub fn get_ray_directions(&self) -> &Vec<Vector3<f64>> {
+        &self.ray_directions
     }
 
     pub fn get_rotation_speed(&self) -> f64 {
