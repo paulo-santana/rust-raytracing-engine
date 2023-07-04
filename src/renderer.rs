@@ -101,7 +101,6 @@ impl Default for State {
     }
 }
 
-#[inline(never)]
 fn trace_ray(ray: &Ray, sphere_color: &Vector4<f64>) -> Vector4<f64> {
     let sphere_origin = Vector3::new(0.0, 0.0, 0.0);
     let radius = 0.5;
