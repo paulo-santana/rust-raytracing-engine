@@ -1,8 +1,12 @@
 extern crate nalgebra_glm as glm;
+use nalgebra::Vector2;
+use raytracing::camera::Camera;
 use raytracing::renderer::{Canvas, RaytracingRenderer, State};
 use std::error::Error;
 use std::io::Read;
 use std::{fs::File, io::Write, time::Instant};
+use winit::event::ElementState::{Pressed, Released};
+use winit::event::MouseButton::Right;
 
 use __core::mem;
 use glow::{HasContext, NativeTexture};
@@ -54,6 +58,9 @@ fn main() {
             }
         }
     };
+
+    let mut camera = Camera::new(45.0, 0.1, 100.0);
+
     let (event_loop, window) = utils::create_window("Custom textures", glutin::GlRequest::Latest);
     let (mut winit_platform, mut imgui_context) = utils::imgui_init(&window);
     let gl = utils::glow_context(&window);
@@ -95,7 +102,22 @@ fn main() {
                 unsafe { gl.clear(glow::COLOR_BUFFER_BIT) };
 
                 let ui = imgui_context.frame();
-                textures_ui.show(ui, &mut state, &mut textures, &gl);
+
+                camera.on_update(
+                    glm::convert(Vector2::from_row_slice(&ui.io().mouse_pos)),
+                    ui.io().delta_time as f64,
+                );
+
+                textures_ui.show(ui, &mut state);
+
+                textures_ui
+                    .renderer
+                    .on_resize(state.canvas_width, state.canvas_height);
+                camera.on_resize(state.canvas_width, state.canvas_height);
+                textures_ui.renderer.render(&mut state, &camera);
+
+                let texture = Program::new_texture(&textures_ui.renderer.canvas, &state, &gl);
+                textures_ui.prepare_texture(texture, &mut textures, &gl);
 
                 winit_platform.prepare_render(ui, window.window());
                 let draw_data = imgui_context.render();
@@ -110,6 +132,27 @@ fn main() {
                 ..
             } => {
                 *control_flow = glutin::event_loop::ControlFlow::Exit;
+            }
+            glutin::event::Event::WindowEvent {
+                event:
+                    glutin::event::WindowEvent::KeyboardInput {
+                        input,
+                        is_synthetic: false,
+                        ..
+                    },
+                ..
+            } => camera.handle_input(input),
+
+            glutin::event::Event::WindowEvent {
+                event: glutin::event::WindowEvent::MouseInput { state, button, .. },
+                ..
+            } => {
+                match (button, state) {
+                    (Right, Pressed) => camera.state.is_active = true,
+                    (Right, Released) => camera.state.is_active = false,
+                    (_, _) => (),
+                };
+                winit_platform.handle_event(imgui_context.io_mut(), window.window(), &event);
             }
             glutin::event::Event::LoopDestroyed => {
                 ig_renderer.destroy(&gl);
@@ -185,13 +228,7 @@ impl Program {
         gl_texture
     }
 
-    fn show(
-        &mut self,
-        ui: &imgui::Ui,
-        state: &mut State,
-        textures: &mut imgui::Textures<glow::Texture>,
-        gl: &glow::Context,
-    ) {
+    fn show(&mut self, ui: &imgui::Ui, state: &mut State) {
         ui.dockspace_over_main_viewport();
 
         ui.window("Settings")
@@ -214,8 +251,8 @@ impl Program {
                     .speed(1.0)
                     .build(ui, &mut state.canvas_height);
 
-                self.renderer.canvas.width = state.canvas_width;
-                self.renderer.canvas.height = state.canvas_height;
+                // self.renderer.canvas.width = state.canvas_width;
+                // self.renderer.canvas.height = state.canvas_height;
 
                 if ui.button("Save to ppm") {
                     let mut file = File::create("canvas.ppm").expect("Failed to open 'canvas.ppm'");
@@ -231,10 +268,6 @@ impl Program {
                 if !state.error_msg.is_empty() {
                     ui.text_colored([1.0, 0.4, 0.1, 1.0], &state.error_msg);
                 }
-
-                self.renderer.render(state);
-                let texture = Self::new_texture(&self.renderer.canvas, state, gl);
-                self.prepare_texture(texture, textures, gl);
             });
 
         ui.window("Scene").build(|| {

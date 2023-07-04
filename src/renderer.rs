@@ -16,17 +16,15 @@ pub struct RaytracingRenderer {
 }
 
 impl RaytracingRenderer {
-    pub fn render(&mut self, state: &mut State) {
-        let start = Instant::now();
-        if self.canvas.data.len() != (self.canvas.width * self.canvas.height) as usize {
-            self.canvas = Canvas::new(self.canvas.width, self.canvas.height);
+    pub fn on_resize(&mut self, viewport_width: u32, viewport_height: u32) {
+        if self.canvas.width == viewport_width && self.canvas.height == viewport_height {
+            return;
         }
+        self.canvas.resize(viewport_width, viewport_height);
+    }
 
-        let camera = Camera::new(
-            Vector3::new(0.0, 0.0, 0.0),
-            self.canvas.width,
-            self.canvas.height,
-        );
+    pub fn render(&mut self, state: &mut State, camera: &Camera) {
+        let start = Instant::now();
 
         match state.use_threads {
             true => {
@@ -81,6 +79,12 @@ impl Canvas {
             width,
             height,
         }
+    }
+
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.data.resize((width * height) as usize, 0);
+        self.width = width;
+        self.height = height;
     }
 }
 
