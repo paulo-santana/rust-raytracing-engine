@@ -26,42 +26,27 @@ impl RaytracingRenderer {
     pub fn render(&mut self, state: &mut State, camera: &Camera) {
         let start = Instant::now();
 
+        let render_row = |(y, row): (usize, &mut [u32])| {
+            let mut ray = Ray::new(camera.position, Vector3::default());
+            let offset = y as u32 * self.canvas.width;
+            for x in 0..self.canvas.width {
+                ray.direction = camera.get_ray_directions()[(offset + x) as usize];
+                let color = trace_ray(
+                    &ray,
+                    &nalgebra::convert(Vector4::from_row_slice(&state.sphere_color)),
+                );
+                let color = glm::clamp(&color, 0.0, 1.0);
+                row[x as usize] = color_to_u32(&color);
+            }
+        };
+
+        let data = &mut self.canvas.data;
+        let width = self.canvas.width as usize;
+
         match state.use_threads {
-            true => {
-                self.canvas
-                    .data
-                    .par_chunks_mut(self.canvas.width as usize)
-                    .enumerate()
-                    .for_each(|(y, row)| {
-                        let mut ray = Ray::new(camera.position, Vector3::default());
-                        let offset = y as u32 * self.canvas.width;
-                        for x in 0..self.canvas.width {
-                            ray.direction = camera.get_ray_directions()[(offset + x) as usize];
-                            let color = trace_ray(
-                                &ray,
-                                &nalgebra::convert(Vector4::from_row_slice(&state.sphere_color)),
-                            );
-                            let color = glm::clamp(&color, 0.0, 1.0);
-                            row[x as usize] = color_to_u32(&color);
-                        }
-                    });
-            }
-            false => {
-                let mut ray = Ray::new(camera.position, Vector3::default());
-                for y in 0..self.canvas.height {
-                    let offset = y * self.canvas.width;
-                    for x in 0..self.canvas.width {
-                        ray.direction = camera.get_ray_directions()[(offset + x) as usize];
-                        let color = trace_ray(
-                            &ray,
-                            &nalgebra::convert(Vector4::from_row_slice(&state.sphere_color)),
-                        );
-                        let color = glm::clamp(&color, 0.0, 1.0);
-                        self.canvas.data[(offset + x) as usize] = color_to_u32(&color);
-                    }
-                }
-            }
-        }
+            true => data.par_chunks_mut(width).enumerate().for_each(render_row),
+            false => data.chunks_mut(width).enumerate().for_each(render_row),
+        };
 
         state.last_render_time = start.elapsed();
     }
