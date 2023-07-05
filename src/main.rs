@@ -1,7 +1,8 @@
 extern crate nalgebra_glm as glm;
-use nalgebra::Vector2;
+use nalgebra::{Vector2, Vector3};
 use raytracing::camera::Camera;
 use raytracing::renderer::{Canvas, RaytracingRenderer, State};
+use raytracing::scene::{self, Scene, Sphere};
 use std::error::Error;
 use std::io::Read;
 use std::{fs::File, io::Write, time::Instant};
@@ -62,6 +63,19 @@ fn main() {
     };
 
     let mut camera = Camera::new(45.0, 0.1, 100.0);
+    let mut scene = scene::Scene {
+        spheres: vec![
+            Sphere {
+                position: glm::vec3(1.3, 0.0, 0.0),
+                albedo: glm::vec3(1.0, 0.0, 0.5),
+                ..Default::default()
+            },
+            Sphere {
+                albedo: glm::vec3(0.3, 0.5, 0.8),
+                ..Default::default()
+            },
+        ],
+    };
 
     let (event_loop, window) = utils::create_window("Custom textures", glutin::GlRequest::Latest);
     let (mut winit_platform, mut imgui_context) = utils::imgui_init(&window);
@@ -118,13 +132,14 @@ fn main() {
                         .expect("Failed to set cursor position");
                 }
 
-                textures_ui.show(ui, &mut state);
+                textures_ui.show(ui, &mut state, &mut scene);
 
                 textures_ui
                     .renderer
                     .on_resize(state.canvas_width, state.canvas_height);
                 camera.on_resize(state.canvas_width, state.canvas_height);
-                state.last_render_time = textures_ui.renderer.render(&state, &camera);
+                textures_ui.renderer.use_threads = state.use_threads;
+                state.last_render_time = textures_ui.renderer.render(&scene, &camera);
 
                 let texture = Program::new_texture(&textures_ui.renderer.canvas, &state, &gl);
                 textures_ui.prepare_texture(texture, &mut textures, &gl);
@@ -151,7 +166,10 @@ fn main() {
                         ..
                     },
                 ..
-            } => camera.handle_input(input),
+            } => {
+                camera.handle_input(input);
+                winit_platform.handle_event(imgui_context.io_mut(), window.window(), &event);
+            }
 
             glutin::event::Event::WindowEvent {
                 event:
@@ -198,6 +216,7 @@ impl Program {
     fn new() -> Self {
         let renderer = RaytracingRenderer {
             canvas: Canvas::new(DEFAULT_WIDTH, DEFAULT_HEIGHT),
+            use_threads: false,
         };
         Self {
             generated_texture: None,
@@ -251,7 +270,7 @@ impl Program {
         gl_texture
     }
 
-    fn show(&mut self, ui: &imgui::Ui, state: &mut State) {
+    fn show(&mut self, ui: &imgui::Ui, state: &mut State, scene: &mut Scene) {
         ui.dockspace_over_main_viewport();
 
         ui.window("Settings")
@@ -274,9 +293,6 @@ impl Program {
                     .speed(1.0)
                     .build(ui, &mut state.canvas_height);
 
-                // self.renderer.canvas.width = state.canvas_width;
-                // self.renderer.canvas.height = state.canvas_height;
-
                 if ui.button("Save to ppm") {
                     let mut file = File::create("canvas.ppm").expect("Failed to open 'canvas.ppm'");
                     save_ppm(&mut file, &self.renderer.canvas);
@@ -295,6 +311,27 @@ impl Program {
 
         ui.window("Scene").build(|| {
             ui.color_edit4("Sphere color", &mut state.sphere_color);
+            scene
+                .spheres
+                .iter_mut()
+                .enumerate()
+                .for_each(|(i, sphere)| {
+                    // ui.input_scalar_n(format!("sphere {i}"), sphere.position.as_mut_slice())
+                    //     .build();
+                    Drag::new(format!("sphere {i}"))
+                        .range(-100.0, 100.0)
+                        .speed(0.1)
+                        .build_array(ui, sphere.position.as_mut_slice());
+                    Drag::new(format!("radius {i}"))
+                        .range(0.1, 100.0)
+                        .speed(0.1)
+                        .build(ui, &mut sphere.radius);
+                    let a = glm::convert::<Vector3<f64>, Vector3<f32>>(sphere.albedo);
+                    let mut colors = [a.x, a.y, a.z];
+                    ui.color_edit3(format!("albedo {i}"), &mut colors);
+                    sphere.albedo =
+                        glm::convert::<Vector3<f32>, Vector3<f64>>(Vector3::from(colors));
+                });
         });
 
         let token = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0]));
