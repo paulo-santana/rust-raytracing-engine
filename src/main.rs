@@ -310,7 +310,6 @@ impl Program {
             });
 
         ui.window("Scene").build(|| {
-            ui.color_edit4("Sphere color", &mut state.sphere_color);
             scene
                 .spheres
                 .iter_mut()
@@ -331,6 +330,7 @@ impl Program {
                     ui.color_edit3(format!("albedo {i}"), &mut colors);
                     sphere.albedo =
                         glm::convert::<Vector3<f32>, Vector3<f64>>(Vector3::from(colors));
+                    ui.separator();
                 });
         });
 
