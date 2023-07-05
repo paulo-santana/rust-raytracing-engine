@@ -86,26 +86,41 @@ impl RaytracingRenderer {
 
     // RayGen
     pub fn per_pixel(x: u32, y: u32, width: u32, camera: &Camera, scene: &Scene) -> Vector4<f64> {
-        let ray = Ray {
+        let mut ray = Ray {
             origin: camera.position,
             direction: camera.get_ray_directions()[(x + y * width) as usize],
         };
 
-        let payload = Self::trace_ray(&ray, scene);
-
-        if payload.hit_distance == f64::MAX {
-            return glm::vec4(0.0, 0.0, 0.0, 1.0);
-        }
-
         let light_direction = glm::vec3(-1.0, -1.0, -1.0).normalize();
 
-        let light_intensity = glm::max2_scalar(payload.world_normal.dot(&-light_direction), 0.0);
+        let mut color = glm::vec4(0.0, 0.0, 0.0, 1.0);
+        let mut multiplier = 1.0;
+        let bounces = 2;
 
-        let closest_sphere = &scene.spheres[payload.object_index];
+        for _ in 0..bounces {
+            let payload = Self::trace_ray(&ray, scene);
 
-        let sphere_color = closest_sphere.albedo;
+            if payload.hit_distance == f64::MAX {
+                let sky_color = glm::vec4(0.0, 0.0, 0.0, 1.0);
+                color += sky_color * multiplier;
+                break;
+            }
 
-        glm::vec3_to_vec4(&(sphere_color * light_intensity))
+            let light_intensity =
+                glm::max2_scalar(payload.world_normal.dot(&-light_direction), 0.0);
+
+            let closest_sphere = &scene.spheres[payload.object_index];
+            let mut sphere_color = closest_sphere.albedo;
+            sphere_color *= light_intensity;
+
+            color += glm::vec3_to_vec4(&(sphere_color * multiplier));
+            multiplier *= 0.7;
+
+            ray.origin = payload.world_position + payload.world_normal * 0.0001;
+            ray.direction = glm::reflect_vec(&ray.direction, &payload.world_normal);
+        }
+
+        color
     }
 
     fn trace_ray(ray: &Ray, scene: &Scene) -> HitPayload {
@@ -128,7 +143,7 @@ impl RaytracingRenderer {
 
             // (-b +- sqrt(discriminant)) / 2a
             let closest_t = (-b - discriminant.sqrt()) / 2.0 * a;
-            if closest_t < hit_distance {
+            if closest_t > 0.0 && closest_t < hit_distance {
                 hit_distance = closest_t;
                 closest_sphere_index = i;
             }
