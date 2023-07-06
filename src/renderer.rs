@@ -121,16 +121,15 @@ impl RaytracingRenderer {
             multiplier *= 0.5;
 
             ray.origin = payload.world_position + payload.world_normal * 0.0001;
-            ray.direction = glm::reflect_vec(
-                &ray.direction,
-                &(payload.world_normal
-                    + sphere_material.roughness
-                        * (glm::vec3(
-                            rng.gen_range(-0.5..0.5),
-                            rng.gen_range(-0.5..0.5),
-                            rng.gen_range(-0.5..0.5),
-                        ))),
-            );
+            ray.direction = glm::reflect_vec(&ray.direction, &(payload.world_normal));
+            if sphere_material.roughness > 0.0 {
+                ray.direction += sphere_material.roughness
+                    * (glm::vec3(
+                        rng.gen_range(-0.5..0.5),
+                        rng.gen_range(-0.5..0.5),
+                        rng.gen_range(-0.5..0.5),
+                    ));
+            }
         }
 
         color
