@@ -1,3 +1,4 @@
+use rand::{thread_rng, Rng};
 use rayon::prelude::*;
 extern crate nalgebra_glm as glm;
 use core::time;
@@ -95,13 +96,15 @@ impl RaytracingRenderer {
 
         let mut color = glm::vec4(0.0, 0.0, 0.0, 1.0);
         let mut multiplier = 1.0;
-        let bounces = 2;
+        let bounces = 5;
+
+        let mut rng = thread_rng();
 
         for _ in 0..bounces {
             let payload = Self::trace_ray(&ray, scene);
 
             if payload.hit_distance == f64::MAX {
-                let sky_color = glm::vec4(0.0, 0.0, 0.0, 1.0);
+                let sky_color = glm::vec4(0.6, 0.7, 0.9, 1.0);
                 color += sky_color * multiplier;
                 break;
             }
@@ -110,14 +113,24 @@ impl RaytracingRenderer {
                 glm::max2_scalar(payload.world_normal.dot(&-light_direction), 0.0);
 
             let closest_sphere = &scene.spheres[payload.object_index];
-            let mut sphere_color = closest_sphere.albedo;
+            let sphere_material = &scene.materials[closest_sphere.material_index];
+            let mut sphere_color = sphere_material.albedo;
             sphere_color *= light_intensity;
 
             color += glm::vec3_to_vec4(&(sphere_color * multiplier));
-            multiplier *= 0.7;
+            multiplier *= 0.5;
 
             ray.origin = payload.world_position + payload.world_normal * 0.0001;
-            ray.direction = glm::reflect_vec(&ray.direction, &payload.world_normal);
+            ray.direction = glm::reflect_vec(
+                &ray.direction,
+                &(payload.world_normal
+                    + sphere_material.roughness
+                        * (glm::vec3(
+                            rng.gen_range(-0.5..0.5),
+                            rng.gen_range(-0.5..0.5),
+                            rng.gen_range(-0.5..0.5),
+                        ))),
+            );
         }
 
         color

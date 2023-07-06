@@ -2,7 +2,7 @@ extern crate nalgebra_glm as glm;
 use nalgebra::{Vector2, Vector3};
 use raytracing::camera::Camera;
 use raytracing::renderer::{Canvas, RaytracingRenderer, State};
-use raytracing::scene::{self, Scene, Sphere};
+use raytracing::scene::{self, Material, Scene, Sphere};
 use std::error::Error;
 use std::io::Read;
 use std::{fs::File, io::Write, time::Instant};
@@ -63,18 +63,30 @@ fn main() {
     };
 
     let mut camera = Camera::new(45.0, 0.1, 100.0);
+
+    let pink_sphere = Material {
+        albedo: Vector3::new(1.0, 0.0, 1.0),
+        ..Default::default()
+    };
+    let blue_sphere = Material {
+        albedo: Vector3::new(0.3, 0.5, 0.8),
+        ..Default::default()
+    };
+
     let mut scene = scene::Scene {
         spheres: vec![
             Sphere {
-                position: glm::vec3(1.3, 0.0, 0.0),
-                albedo: glm::vec3(1.0, 0.0, 0.5),
-                ..Default::default()
+                position: glm::vec3(0.0, 0.0, 0.0),
+                radius: 1.0,
+                material_index: 0,
             },
             Sphere {
-                albedo: glm::vec3(0.3, 0.5, 0.8),
-                ..Default::default()
+                position: glm::vec3(0.0, -101.0, 0.0),
+                radius: 100.0,
+                material_index: 1,
             },
         ],
+        materials: vec![pink_sphere, blue_sphere],
     };
 
     let (event_loop, window) = utils::create_window("Custom textures", glutin::GlRequest::Latest);
@@ -315,22 +327,49 @@ impl Program {
                 .iter_mut()
                 .enumerate()
                 .for_each(|(i, sphere)| {
-                    // ui.input_scalar_n(format!("sphere {i}"), sphere.position.as_mut_slice())
-                    //     .build();
-                    Drag::new(format!("sphere {i}"))
+                    let token = ui.push_id(i.to_string());
+                    Drag::new("position")
                         .range(-100.0, 100.0)
                         .speed(0.1)
                         .build_array(ui, sphere.position.as_mut_slice());
-                    Drag::new(format!("radius {i}"))
+                    Drag::new("radius")
                         .range(0.1, 100.0)
                         .speed(0.1)
                         .build(ui, &mut sphere.radius);
-                    let a = glm::convert::<Vector3<f64>, Vector3<f32>>(sphere.albedo);
-                    let mut colors = [a.x, a.y, a.z];
-                    ui.color_edit3(format!("albedo {i}"), &mut colors);
-                    sphere.albedo =
-                        glm::convert::<Vector3<f32>, Vector3<f64>>(Vector3::from(colors));
+                    Drag::new("material")
+                        .range(0, scene.materials.len() - 1)
+                        .speed(1.0)
+                        .build(ui, &mut sphere.material_index);
                     ui.separator();
+                    token.pop();
+                });
+
+            scene
+                .materials
+                .iter_mut()
+                .enumerate()
+                .for_each(|(i, material)| {
+                    let token = ui.push_id(i.to_string());
+
+                    let a = glm::convert::<Vector3<f64>, Vector3<f32>>(material.albedo);
+                    let mut colors = [a.x, a.y, a.z, 1.0];
+
+                    material.albedo = glm::convert::<Vector3<f32>, Vector3<f64>>(Vector3::new(
+                        colors[0], colors[1], colors[2],
+                    ));
+
+                    ui.color_edit4("albedo", &mut colors);
+
+                    Drag::new("roughness")
+                        .speed(0.05)
+                        .range(0.0, 1.0)
+                        .build(ui, &mut material.roughness);
+                    Drag::new("metallic")
+                        .speed(0.05)
+                        .range(0.0, 1.0)
+                        .build(ui, &mut material.metallic);
+                    ui.separator();
+                    token.pop();
                 });
         });
 
