@@ -1,10 +1,13 @@
 extern crate nalgebra_glm as glm;
+use std::fmt::Debug;
+
 use nalgebra::{Matrix4, Vector2, Vector3};
 use winit::event::{
     ElementState::{Pressed, Released},
     KeyboardInput, VirtualKeyCode,
 };
 
+#[derive(Debug)]
 pub struct CameraState {
     up_speed: f64,
     down_speed: f64,
@@ -35,9 +38,9 @@ pub struct Camera {
 impl Camera {
     pub fn new(vertical_fov: f64, near_clip: f64, far_clip: f64) -> Camera {
         let direction = glm::vec3(0.0, 0.0, -1.0);
-        let position = glm::vec3(0.0, 0.0, 3.0);
+        let position = glm::vec3(0.0, 0.0, 6.0);
 
-        Camera {
+        let mut camera = Camera {
             position,
             forward_direction: direction,
             vertical_fov,
@@ -60,8 +63,9 @@ impl Camera {
                 backward_speed: 0.0,
                 is_active: false,
             },
-        }
-
+        };
+        camera.recalculate_view();
+        camera
     }
 
     pub fn on_update(&mut self, mouse_pos: Vector2<f64>, ts: f64) {
