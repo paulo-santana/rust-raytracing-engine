@@ -5,8 +5,6 @@ use winit::event::{
     KeyboardInput, VirtualKeyCode,
 };
 
-use crate::rt::ray::Ray;
-
 pub struct CameraState {
     up_speed: f64,
     down_speed: f64,
@@ -30,9 +28,6 @@ pub struct Camera {
     last_mouse_pos: Vector2<f64>,
     viewport_width: u32,
     viewport_height: u32,
-    horizontal: Vector3<f64>,
-    vertical: Vector3<f64>,
-    lower_left_corner: Vector3<f64>,
     pub state: CameraState,
     ray_directions: Vec<Vector3<f64>>,
 }
@@ -41,16 +36,6 @@ impl Camera {
     pub fn new(vertical_fov: f64, near_clip: f64, far_clip: f64) -> Camera {
         let direction = glm::vec3(0.0, 0.0, -1.0);
         let position = glm::vec3(0.0, 0.0, 3.0);
-
-        let viewport_height = 2.0;
-        let aspect_ratio = 1.0;
-        let viewport_width = aspect_ratio * viewport_height;
-        let focal_length = 1.0;
-
-        let horizontal = Vector3::new(viewport_width, 0.0, 0.0);
-        let vertical = Vector3::new(0.0, viewport_height, 0.0);
-        let lower_left_corner =
-            position - horizontal / 2.0 - vertical / 2.0 - Vector3::new(0.0, 0.0, focal_length);
 
         Camera {
             position,
@@ -65,9 +50,6 @@ impl Camera {
             inverse_projection: Matrix4::from_row_slice(&[1.0; 16]),
             viewport_width: 400,
             viewport_height: 400,
-            horizontal,
-            vertical,
-            lower_left_corner,
             ray_directions: Vec::with_capacity(400 * 400),
             state: CameraState {
                 up_speed: 0.0,
@@ -79,16 +61,7 @@ impl Camera {
                 is_active: false,
             },
         }
-    }
 
-    pub fn ray_to_coordinate(&self, x: u32, y: u32) -> Ray {
-        let u = ratio(x, self.viewport_width);
-        let v = ratio(y, self.viewport_height);
-
-        Ray::new(
-            self.position,
-            self.lower_left_corner + u * self.horizontal + v * self.vertical - self.position,
-        )
     }
 
     pub fn on_update(&mut self, mouse_pos: Vector2<f64>, ts: f64) {
@@ -225,9 +198,4 @@ impl Camera {
             }
         }
     }
-}
-
-#[inline]
-fn ratio(a: u32, b: u32) -> f64 {
-    a as f64 / (b as f64 - 1.0)
 }
