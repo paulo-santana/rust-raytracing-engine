@@ -68,13 +68,13 @@ impl Camera {
         camera
     }
 
-    pub fn on_update(&mut self, mouse_pos: Vector2<f64>, ts: f64) {
+    pub fn on_update(&mut self, mouse_pos: Vector2<f64>, ts: f64) -> bool {
         let curr_position = self.position;
 
         let delta = (mouse_pos - self.last_mouse_pos) * 0.002;
         if !self.state.is_active {
             self.last_mouse_pos = mouse_pos;
-            return;
+            return false;
         }
 
         let mut moved = false;
@@ -107,6 +107,7 @@ impl Camera {
             self.recalculate_view();
             self.recalculate_ray_directions();
         }
+        moved
     }
 
     pub fn on_resize(&mut self, width: u32, height: u32) {

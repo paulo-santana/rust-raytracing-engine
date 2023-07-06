@@ -1,7 +1,7 @@
 extern crate nalgebra_glm as glm;
 use nalgebra::{Vector2, Vector3};
 use raytracing::camera::Camera;
-use raytracing::renderer::{Canvas, RaytracingRenderer, State};
+use raytracing::renderer::{Canvas, RaytracingRenderer, RendererSettings, State};
 use raytracing::scene::{self, Material, Scene, Sphere};
 use std::error::Error;
 use std::io::Read;
@@ -66,10 +66,12 @@ fn main() {
 
     let pink_sphere = Material {
         albedo: Vector3::new(1.0, 0.0, 1.0),
+        roughness: 0.0,
         ..Default::default()
     };
     let blue_sphere = Material {
-        albedo: Vector3::new(0.3, 0.5, 0.8),
+        albedo: Vector3::new(0.2, 0.3, 1.0),
+        roughness: 0.1,
         ..Default::default()
     };
 
@@ -132,10 +134,14 @@ fn main() {
 
                 let ui = imgui_context.frame();
 
-                camera.on_update(
+                let moved = camera.on_update(
                     glm::convert(Vector2::from_row_slice(&ui.io().mouse_pos)),
                     ui.io().delta_time as f64,
                 );
+
+                if moved {
+                    textures_ui.renderer.reset_frame_index();
+                }
 
                 if camera.state.is_active {
                     window
@@ -150,7 +156,7 @@ fn main() {
                     .renderer
                     .on_resize(state.canvas_width, state.canvas_height);
                 camera.on_resize(state.canvas_width, state.canvas_height);
-                textures_ui.renderer.use_threads = state.use_threads;
+                textures_ui.renderer.settings.use_threads = state.use_threads;
                 state.last_render_time = textures_ui.renderer.render(&scene, &camera);
 
                 let texture = Program::new_texture(&textures_ui.renderer.canvas, &state, &gl);
@@ -226,10 +232,13 @@ struct Program {
 
 impl Program {
     fn new() -> Self {
-        let renderer = RaytracingRenderer {
-            canvas: Canvas::new(DEFAULT_WIDTH, DEFAULT_HEIGHT),
-            use_threads: false,
-        };
+        let renderer = RaytracingRenderer::new(
+            Canvas::new(DEFAULT_WIDTH, DEFAULT_HEIGHT),
+            RendererSettings {
+                accumulate: true,
+                use_threads: false,
+            },
+        );
         Self {
             generated_texture: None,
             viewport_width: 100,
@@ -296,6 +305,12 @@ impl Program {
                 ui.text(format!("FPS: {}", 1.0 / ui.io().delta_time));
                 ui.checkbox("Use linear filter", &mut state.use_linear_filter);
                 ui.checkbox("Use multithreaded rendering", &mut state.use_threads);
+
+                ui.checkbox("Accummulate", &mut self.renderer.settings.accumulate);
+                if ui.button("Reset") {
+                    self.renderer.reset_frame_index();
+                }
+
                 Drag::new("Canvas width")
                     .range(20, self.viewport_width)
                     .speed(1.0)
@@ -354,11 +369,11 @@ impl Program {
                     let a = glm::convert::<Vector3<f64>, Vector3<f32>>(material.albedo);
                     let mut colors = [a.x, a.y, a.z, 1.0];
 
+                    ui.color_edit4("albedo", &mut colors);
+
                     material.albedo = glm::convert::<Vector3<f32>, Vector3<f64>>(Vector3::new(
                         colors[0], colors[1], colors[2],
                     ));
-
-                    ui.color_edit4("albedo", &mut colors);
 
                     Drag::new("roughness")
                         .speed(0.05)

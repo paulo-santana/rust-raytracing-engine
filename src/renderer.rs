@@ -4,7 +4,7 @@ extern crate nalgebra_glm as glm;
 use core::time;
 use std::time::Instant;
 
-use nalgebra::{Vector3, Vector4};
+use nalgebra::{ArrayStorage, Const, Matrix, Vector3, Vector4};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -13,9 +13,16 @@ use crate::{
     scene::Scene,
 };
 
+pub struct RendererSettings {
+    pub accumulate: bool,
+    pub use_threads: bool,
+}
+
 pub struct RaytracingRenderer {
     pub canvas: Canvas,
-    pub use_threads: bool,
+    pub accumulation_data: Vec<Vector4<f64>>,
+    frame_index: usize,
+    pub settings: RendererSettings,
 }
 
 pub struct Canvas {
@@ -45,42 +52,82 @@ pub struct State {
     pub error_msg: String,
 }
 
+type CurrentData<'a> = &'a mut [u32];
+type AccumulationData<'a> = &'a mut [Matrix<f64, Const<4>, Const<1>, ArrayStorage<f64, 4, 1>>];
+
 impl RaytracingRenderer {
+    pub fn new(canvas: Canvas, settings: RendererSettings) -> Self {
+        Self {
+            canvas,
+            accumulation_data: Default::default(),
+            frame_index: 1,
+            settings,
+        }
+    }
+
+    pub fn reset_frame_index(&mut self) {
+        self.frame_index = 1;
+    }
+
     pub fn on_resize(&mut self, viewport_width: u32, viewport_height: u32) {
         if self.canvas.width == viewport_width && self.canvas.height == viewport_height {
             return;
         }
         self.canvas.resize(viewport_width, viewport_height);
+        self.accumulation_data =
+            vec![Vector4::new(0.0, 0.0, 0.0, 1.0); (viewport_width * viewport_height) as usize];
     }
 
     pub fn render(&mut self, scene: &Scene, camera: &Camera) -> time::Duration {
         let start = Instant::now();
 
-        let render_row = |(y, row): (usize, &mut [u32])| {
-            for x in 0..self.canvas.width {
-                let color = Self::per_pixel(x, y as u32, self.canvas.width, camera, scene);
-                let color = glm::clamp(&color, 0.0, 1.0);
-                row[x as usize] = color_to_u32(&color);
-            }
-        };
+        if self.frame_index == 1 {
+            self.accumulation_data
+                .fill(Vector4::new(0.0, 0.0, 0.0, 1.0));
+        }
+
+        let render_row =
+            |(y, (current_row, cumulated_row)): (usize, (CurrentData, AccumulationData))| {
+                for x in 0..self.canvas.width {
+                    let color = Self::per_pixel(x, y as u32, self.canvas.width, camera, scene);
+                    let x = x as usize;
+
+                    cumulated_row[x] += color;
+
+                    let accumulated_color = cumulated_row[x] / self.frame_index as f64;
+
+                    let color = glm::clamp(&accumulated_color, 0.0, 1.0);
+
+                    current_row[x] = color_to_u32(&color);
+                }
+            };
+        //
 
         // let data = &mut self.canvas.data;
         let width = self.canvas.width as usize;
 
-        match self.use_threads {
+        match self.settings.use_threads {
             true => self
                 .canvas
                 .data
                 .par_chunks_mut(width)
+                .zip_eq(self.accumulation_data.par_chunks_mut(width))
                 .enumerate()
                 .for_each(render_row),
             false => self
                 .canvas
                 .data
                 .chunks_mut(width)
+                .zip(self.accumulation_data.chunks_mut(width))
                 .enumerate()
                 .for_each(render_row),
         };
+
+        if self.settings.accumulate {
+            self.frame_index += 1;
+        } else {
+            self.frame_index = 1;
+        }
 
         start.elapsed()
     }
