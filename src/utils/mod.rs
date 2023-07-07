@@ -58,7 +58,11 @@ pub fn imgui_init(window: &Window) -> (WinitPlatform, imgui::Context) {
 
     imgui_context
         .fonts()
-        .add_font(&[imgui::FontSource::DefaultFontData { config: None }]);
+        .add_font(&[imgui::FontSource::TtfData {
+            data: include_bytes!("../../assets/fonts/Roboto-Regular.ttf"),
+            size_pixels: 16.0,
+            config: None,
+        }]);
 
     imgui_context.io_mut().font_global_scale = (1.0 / winit_platform.hidpi_factor()) as f32;
     imgui_context
