@@ -1,5 +1,5 @@
 extern crate nalgebra_glm as glm;
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{Vector2, Vector4};
 use raytracing::camera::Camera;
 use raytracing::renderer::{Canvas, RaytracingRenderer, RendererSettings, State};
 use raytracing::scene::{self, Material, Scene, Sphere};
@@ -65,20 +65,27 @@ fn main() {
     let mut camera = Camera::new(45.0, 0.1, 100.0);
 
     let pink_sphere = Material {
-        albedo: Vector3::new(1.0, 0.0, 1.0),
+        albedo: Vector4::new(1.0, 0.0, 1.0, 1.0),
         roughness: 0.0,
         ..Default::default()
     };
     let blue_sphere = Material {
-        albedo: Vector3::new(0.2, 0.3, 1.0),
+        albedo: Vector4::new(0.2, 0.3, 1.0, 1.0),
         roughness: 0.1,
+        ..Default::default()
+    };
+    let orange_sphere = Material {
+        albedo: Vector4::new(0.8, 0.5, 0.2, 1.0),
+        roughness: 0.1,
+        emission_color: Vector4::new(0.8, 0.5, 0.2, 1.0),
+        emission_power: 2.0,
         ..Default::default()
     };
 
     let mut scene = scene::Scene {
         spheres: vec![
             Sphere {
-                position: glm::vec3(0.0, 0.0, 0.0),
+                position: glm::vec3(-2.0, 2.0, 0.0),
                 radius: 1.0,
                 material_index: 0,
             },
@@ -87,8 +94,13 @@ fn main() {
                 radius: 100.0,
                 material_index: 1,
             },
+            Sphere {
+                position: glm::vec3(2.0, 2.0, 0.0),
+                radius: 1.0,
+                material_index: 2,
+            },
         ],
-        materials: vec![pink_sphere, blue_sphere],
+        materials: vec![pink_sphere, blue_sphere, orange_sphere],
     };
 
     let (event_loop, window) = utils::create_window("Custom textures", glutin::GlRequest::Latest);
@@ -237,6 +249,7 @@ impl Program {
             RendererSettings {
                 accumulate: true,
                 use_threads: false,
+                slow_random: true,
             },
         );
         Self {
@@ -303,10 +316,12 @@ impl Program {
                 ));
                 ui.text(format!("last render time: {:?}", state.last_render_time));
                 ui.text(format!("FPS: {}", 1.0 / ui.io().delta_time));
+
                 ui.checkbox("Use linear filter", &mut state.use_linear_filter);
                 ui.checkbox("Use multithreaded rendering", &mut state.use_threads);
-
                 ui.checkbox("Accummulate", &mut self.renderer.settings.accumulate);
+                ui.checkbox("Slow random", &mut self.renderer.settings.slow_random);
+
                 if ui.button("Reset") {
                     self.renderer.reset_frame_index();
                 }
@@ -366,14 +381,20 @@ impl Program {
                 .for_each(|(i, material)| {
                     let token = ui.push_id(i.to_string());
 
-                    let a = glm::convert::<Vector3<f64>, Vector3<f32>>(material.albedo);
-                    let mut colors = [a.x, a.y, a.z, 1.0];
+                    let a: Vector4<f32> = glm::convert(material.albedo);
+                    let mut albedo = [a.x, a.y, a.z, 1.0];
+                    ui.color_edit4("albedo", &mut albedo);
+                    material.albedo = glm::convert(Vector4::from_column_slice(&albedo));
 
-                    ui.color_edit4("albedo", &mut colors);
+                    let e: Vector4<f32> = glm::convert(material.emission_color);
+                    let mut emission = [e.x, e.y, e.z, 1.0];
+                    ui.color_edit4("emission", &mut emission);
+                    material.emission_color = glm::convert(Vector4::from_column_slice(&emission));
 
-                    material.albedo = glm::convert::<Vector3<f32>, Vector3<f64>>(Vector3::new(
-                        colors[0], colors[1], colors[2],
-                    ));
+                    Drag::new("emission power")
+                        .speed(0.05)
+                        .range(0.0, f64::MAX)
+                        .build(ui, &mut material.emission_power);
 
                     Drag::new("roughness")
                         .speed(0.05)

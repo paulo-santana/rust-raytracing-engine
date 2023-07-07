@@ -1,4 +1,4 @@
-use rand::{thread_rng, Rng};
+use rand::Rng;
 use rayon::prelude::*;
 extern crate nalgebra_glm as glm;
 use core::time;
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     camera::Camera,
+    random::random_f64,
     rt::{color::color_to_u32, ray::Ray},
     scene::Scene,
 };
@@ -16,6 +17,7 @@ use crate::{
 pub struct RendererSettings {
     pub accumulate: bool,
     pub use_threads: bool,
+    pub slow_random: bool,
 }
 
 pub struct RaytracingRenderer {
@@ -89,7 +91,15 @@ impl RaytracingRenderer {
         let render_row =
             |(y, (current_row, cumulated_row)): (usize, (CurrentData, AccumulationData))| {
                 for x in 0..self.canvas.width {
-                    let color = Self::per_pixel(x, y as u32, self.canvas.width, camera, scene);
+                    let color = Self::per_pixel(
+                        x,
+                        y as u32,
+                        self.canvas.width,
+                        camera,
+                        scene,
+                        self.settings.slow_random,
+                        self.frame_index as u32,
+                    );
                     let x = x as usize;
 
                     cumulated_row[x] += color;
@@ -133,53 +143,68 @@ impl RaytracingRenderer {
     }
 
     // RayGen
-    pub fn per_pixel(x: u32, y: u32, width: u32, camera: &Camera, scene: &Scene) -> Vector4<f64> {
+    pub fn per_pixel(
+        x: u32,
+        y: u32,
+        width: u32,
+        camera: &Camera,
+        scene: &Scene,
+        slow_random: bool,
+        frame_index: u32,
+    ) -> Vector4<f64> {
         let mut ray = Ray {
             origin: camera.position,
             direction: camera.get_ray_directions()[(x + y * width) as usize],
         };
 
-        let light_direction = glm::vec3(-1.0, -1.0, -1.0).normalize();
-
-        let mut color = glm::vec4(0.0, 0.0, 0.0, 1.0);
-        let mut multiplier = 1.0;
+        let mut light = Vector4::new(0.0, 0.0, 0.0, 1.0);
+        let mut contribution = Vector4::new(1.0, 1.0, 1.0, 1.0);
+        // let sky_color = Vector4::new(0.6, 0.7, 0.9, 1.0);
         let bounces = 5;
+        let mut seed = (x + y * width) * frame_index;
 
-        let mut rng = thread_rng();
-
-        for _ in 0..bounces {
+        for i in 0..bounces {
             let payload = Self::trace_ray(&ray, scene);
+            seed += i;
 
             if payload.hit_distance == f64::MAX {
-                let sky_color = glm::vec4(0.6, 0.7, 0.9, 1.0);
-                color += sky_color * multiplier;
+                // light += sky_color.component_mul(&contribution);
                 break;
             }
 
-            let light_intensity =
-                glm::max2_scalar(payload.world_normal.dot(&-light_direction), 0.0);
-
             let closest_sphere = &scene.spheres[payload.object_index];
             let sphere_material = &scene.materials[closest_sphere.material_index];
-            let mut sphere_color = sphere_material.albedo;
-            sphere_color *= light_intensity;
 
-            color += glm::vec3_to_vec4(&(sphere_color * multiplier));
-            multiplier *= 0.5;
+            // light += glm::vec3_to_vec4(sphere_color).component_mul(&contribution);
+            contribution.component_mul_assign(&sphere_material.albedo);
+            // light.component_mul_assign(&contribution);
+            // contribution.component_mul_assign(&light);
+            light += sphere_material.get_emission();
 
             ray.origin = payload.world_position + payload.world_normal * 0.0001;
-            ray.direction = glm::reflect_vec(&ray.direction, &(payload.world_normal));
-            if sphere_material.roughness > 0.0 {
-                ray.direction += sphere_material.roughness
-                    * (glm::vec3(
-                        rng.gen_range(-0.5..0.5),
-                        rng.gen_range(-0.5..0.5),
-                        rng.gen_range(-0.5..0.5),
-                    ));
-            }
+
+            let unit_sphere = if slow_random {
+                let mut rng = rand::thread_rng();
+                // ray.direction = glm::reflect_vec(&ray.direction, &(payload.world_normal));
+                // if sphere_material.roughness > 0.0 {
+                // sphere_material.roughness *
+                glm::vec3(
+                    rng.gen_range(-1.0..1.0),
+                    rng.gen_range(-1.0..1.0),
+                    rng.gen_range(-1.0..1.0),
+                )
+                // }
+            } else {
+                random_unit_vec3f64(&mut seed)
+            };
+            // ray.direction = glm::reflect_vec(&ray.direction, &(payload.world_normal));
+            // if sphere_material.roughness > 0.0 {
+            //     ray.direction += sphere_material.roughness * unit_sphere;
+            // }
+            ray.direction = glm::normalize(&(payload.world_normal + unit_sphere));
         }
 
-        color
+        light
     }
 
     fn trace_ray(ray: &Ray, scene: &Scene) -> HitPayload {
@@ -229,7 +254,7 @@ impl RaytracingRenderer {
         }
     }
 
-    fn miss(ray: &Ray) -> HitPayload {
+    fn miss(_ray: &Ray) -> HitPayload {
         HitPayload {
             hit_distance: f64::MAX,
             ..Default::default()
@@ -265,4 +290,12 @@ impl Default for State {
             error_msg: String::default(),
         }
     }
+}
+
+fn random_unit_vec3f64(seed: &mut u32) -> Vector3<f64> {
+    Vector3::new(
+        random_f64(seed) * 2.0 - 1.0,
+        random_f64(seed) * 2.0 - 1.0,
+        random_f64(seed) * 2.0 - 1.0,
+    )
 }
