@@ -159,7 +159,7 @@ impl RaytracingRenderer {
 
         let mut light = Vector4::new(0.0, 0.0, 0.0, 1.0);
         let mut contribution = Vector4::new(1.0, 1.0, 1.0, 1.0);
-        // let sky_color = Vector4::new(0.6, 0.7, 0.9, 1.0);
+        let sky_color = Vector4::new(0.6, 0.7, 0.9, 1.0);
         let bounces = 5;
         let mut seed = (x + y * width) * frame_index;
 
@@ -168,7 +168,7 @@ impl RaytracingRenderer {
             seed += i;
 
             if payload.hit_distance == f64::MAX {
-                // light += sky_color.component_mul(&contribution);
+                light += sky_color;
                 break;
             }
 
@@ -179,32 +179,21 @@ impl RaytracingRenderer {
             contribution.component_mul_assign(&sphere_material.albedo);
             // light.component_mul_assign(&contribution);
             // contribution.component_mul_assign(&light);
-            light += sphere_material.get_emission();
+            light += sphere_material.get_emission().component_mul(&contribution);
 
-            ray.origin = payload.world_position + payload.world_normal * 0.0001;
+            if i < (bounces - 1) {
+                ray.origin = payload.world_position + payload.world_normal * 0.0001;
 
-            let unit_sphere = if slow_random {
-                let mut rng = rand::thread_rng();
-                // ray.direction = glm::reflect_vec(&ray.direction, &(payload.world_normal));
-                // if sphere_material.roughness > 0.0 {
-                // sphere_material.roughness *
-                glm::vec3(
-                    rng.gen_range(-1.0..1.0),
-                    rng.gen_range(-1.0..1.0),
-                    rng.gen_range(-1.0..1.0),
-                )
-                // }
-            } else {
-                random_unit_vec3f64(&mut seed)
-            };
-            // ray.direction = glm::reflect_vec(&ray.direction, &(payload.world_normal));
-            // if sphere_material.roughness > 0.0 {
-            //     ray.direction += sphere_material.roughness * unit_sphere;
-            // }
-            ray.direction = glm::normalize(&(payload.world_normal + unit_sphere));
+                ray.direction = glm::reflect_vec(&ray.direction, &(payload.world_normal));
+                if sphere_material.roughness > 0.0 {
+                    let unit_sphere = random_unit_vec3f64(&mut seed, slow_random);
+                    ray.direction += sphere_material.roughness * unit_sphere;
+                }
+            }
+            // ray.direction = glm::normalize(&(payload.world_normal + unit_sphere));
         }
 
-        light
+        light.component_mul(&contribution)
     }
 
     fn trace_ray(ray: &Ray, scene: &Scene) -> HitPayload {
@@ -292,10 +281,19 @@ impl Default for State {
     }
 }
 
-fn random_unit_vec3f64(seed: &mut u32) -> Vector3<f64> {
-    Vector3::new(
-        random_f64(seed) * 2.0 - 1.0,
-        random_f64(seed) * 2.0 - 1.0,
-        random_f64(seed) * 2.0 - 1.0,
-    )
+fn random_unit_vec3f64(seed: &mut u32, use_thread_rng: bool) -> Vector3<f64> {
+    if use_thread_rng {
+        let mut rng = rand::thread_rng();
+        glm::vec3(
+            rng.gen_range(-1.0..1.0),
+            rng.gen_range(-1.0..1.0),
+            rng.gen_range(-1.0..1.0),
+        )
+    } else {
+        Vector3::new(
+            random_f64(seed) * 2.0 - 1.0,
+            random_f64(seed) * 2.0 - 1.0,
+            random_f64(seed) * 2.0 - 1.0,
+        )
+    }
 }

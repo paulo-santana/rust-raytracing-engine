@@ -85,7 +85,7 @@ fn main() {
     let mut scene = scene::Scene {
         spheres: vec![
             Sphere {
-                position: glm::vec3(-2.0, 2.0, 0.0),
+                position: glm::vec3(-2.0, 0.0, 0.0),
                 radius: 1.0,
                 material_index: 0,
             },
@@ -95,7 +95,7 @@ fn main() {
                 material_index: 1,
             },
             Sphere {
-                position: glm::vec3(2.0, 2.0, 0.0),
+                position: glm::vec3(2.0, 0.0, 0.0),
                 radius: 1.0,
                 material_index: 2,
             },
